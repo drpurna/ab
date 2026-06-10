@@ -4,12 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="tizen:interface-orientation" content="landscape">
-  <title>Telugu IPTV - Samsung TV</title>
-  <!-- Tailwind CSS v3 + TV focus styles -->
+  <title>Telugu IPTV Pro - Samsung TV</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Shaka Player -->
   <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.7.11/dist/shaka-player.compiled.js"></script>
-  <!-- React & ReactDOM -->
   <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
   <style>
@@ -38,6 +35,18 @@
     }
     .settings-slide {
       transition: transform 0.3s ease-in-out;
+    }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.8);
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-size: 14px;
+      z-index: 1000;
+      pointer-events: none;
     }
     body {
       background-color: #0f0f11;
