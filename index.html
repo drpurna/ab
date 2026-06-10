@@ -3,47 +3,40 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="tizen:interface-orientation" content="landscape">
-  <title>Telugu IPTV - Samsung TV</title>
+  <title>Telugu IPTV - Debug</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Shaka Player -->
-  <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.7.11/dist/shaka-player.compiled.js"></script>
   <!-- React & ReactDOM -->
   <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
   <style>
-    /* TV focus outline */
-    *:focus-visible {
-      outline: 3px solid #f97316;
-      outline-offset: 2px;
-    }
-    /* Custom scroll */
-    .custom-scroll::-webkit-scrollbar {
-      height: 6px;
-      width: 6px;
-    }
-    .custom-scroll::-webkit-scrollbar-track {
-      background: #1f2937;
-      border-radius: 4px;
-    }
-    .custom-scroll::-webkit-scrollbar-thumb {
-      background: #f97316;
-      border-radius: 4px;
-    }
-    /* Channel card active */
-    .channel-card.active {
-      border: 2px solid #f97316;
-      transform: scale(1.02);
-    }
-    body {
-      background-color: #0f0f11;
-      overflow: hidden;
+    *:focus-visible { outline: 2px solid orange; }
+    body { background: black; margin: 0; overflow: hidden; }
+    #root { height: 100vh; width: 100vw; }
+    .debug-info { 
+      position: fixed; 
+      bottom: 10px; 
+      left: 10px; 
+      background: rgba(0,0,0,0.7);
+      color: lime;
+      font-size: 10px;
+      padding: 4px 8px;
+      z-index: 9999;
+      font-family: monospace;
     }
   </style>
 </head>
-<body class="bg-gray-950 text-white overflow-hidden">
-  <div id="root" class="h-screen w-screen"></div>
+<body>
+  <div id="root"></div>
+  <div class="debug-info" id="debug">Initializing...</div>
+  <script>
+    window.debug = function(msg) {
+      const el = document.getElementById('debug');
+      if (el) el.innerHTML = msg;
+      console.log(msg);
+    };
+    debug('Loading bundle.js...');
+  </script>
   <script src="bundle.js"></script>
 </body>
 </html>
