@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="tizen:interface-orientation" content="landscape">
   <title>Telugu IPTV Pro - Samsung TV</title>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Shaka Player -->
   <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.7.11/dist/shaka-player.compiled.js"></script>
+  <!-- React & ReactDOM -->
   <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
   <style>
@@ -33,30 +36,383 @@
       transform: scale(1.02);
       border: 2px solid #f97316;
     }
-    .settings-slide {
-      transition: transform 0.3s ease-in-out;
-    }
     .toast {
       position: fixed;
       bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(0,0,0,0.8);
-      padding: 8px 16px;
-      border-radius: 30px;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(8px);
+      padding: 10px 20px;
+      border-radius: 40px;
       font-size: 14px;
       z-index: 1000;
       pointer-events: none;
+      font-weight: 500;
     }
     body {
       background-color: #0f0f11;
       overflow: hidden;
       font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     }
+    /* prevent white flash */
+    #root {
+      height: 100vh;
+      width: 100vw;
+    }
   </style>
 </head>
 <body class="bg-gray-950 text-white overflow-hidden">
-  <div id="root" class="h-screen w-screen overflow-hidden"></div>
-  <script src="bundle.js"></script>
+  <div id="root"></div>
+  <script>
+    (function() {
+      // Ensure React and ReactDOM are loaded
+      if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') {
+        console.error('React not loaded');
+        document.getElementById('root').innerHTML = '<div style="color:white; padding:20px;">Error: React failed to load. Check network.</div>';
+        return;
+      }
+
+      const { useState, useEffect, useRef, useCallback } = React;
+
+      // ---------- M3U Parser ----------
+      function parseM3U(content) {
+        const lines = content.split(/\r?\n/);
+        const channels = [];
+        let currentExtinf = null;
+        for (let i = 0; i < lines.length; i++) {
+          let line = lines[i].trim();
+          if (line.startsWith('#EXTINF')) {
+            const logoMatch = line.match(/tvg-logo="([^"]*)"/);
+            const groupMatch = line.match(/group-title="([^"]*)"/);
+            const tvgIdMatch = line.match(/tvg-id="([^"]*)"/);
+            const nameMatch = line.match(/#EXTINF:[^,]*,?(.*)$/);
+            const name = nameMatch ? nameMatch[1].trim() : 'Unknown';
+            const logo = logoMatch ? logoMatch[1] : null;
+            const group = groupMatch ? groupMatch[1] : 'General';
+            const epgId = tvgIdMatch ? tvgIdMatch[1] : null;
+            currentExtinf = { name, logo, group, url: null, epgId };
+          } else if (line && !line.startsWith('#') && currentExtinf) {
+            currentExtinf.url = line;
+            if (currentExtinf.url.startsWith('http')) channels.push({ ...currentExtinf });
+            currentExtinf = null;
+          }
+        }
+        return channels;
+      }
+
+      // Fallback channels
+      const FALLBACK_CHANNELS = [
+        { name: "ETV Telugu", logo: "https://i.imgur.com/SYjFh2k.png", group: "Entertainment", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", epgId: "etv" },
+        { name: "Gemini TV", logo: "https://i.imgur.com/6Z1l2XO.png", group: "Entertainment", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", epgId: "gemini" },
+        { name: "TV9 Telugu", logo: "https://i.imgur.com/PcXWy9R.png", group: "News", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", epgId: "tv9" },
+        { name: "Maa TV", logo: "https://i.imgur.com/UhDsKxM.png", group: "Entertainment", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", epgId: "maa" },
+        { name: "Zee Telugu", logo: "https://i.imgur.com/wxJQP0f.png", group: "Entertainment", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", epgId: "zee" },
+        { name: "V6 News", logo: "https://i.imgur.com/3t2SYU6.png", group: "News", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", epgId: "v6" }
+      ];
+
+      const MOCK_EPG = {
+        "etv": { now: "🎬 Blockbuster Movie", next: "🎤 Comedy Show" },
+        "gemini": { now: "📰 Evening News", next: "📺 Drama Series" },
+        "tv9": { now: "🔥 Breaking News", next: "📢 Political Debate" },
+        "maa": { now: "🎶 Music Countdown", next: "🎭 Reality Show" },
+        "zee": { now: "🍿 Talk Show", next: "📽️ Movie Premiere" },
+        "v6": { now: "🌍 World News", next: "💬 Interview" }
+      };
+
+      const storage = {
+        get: (key, def) => { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; },
+        set: (key, val) => localStorage.setItem(key, JSON.stringify(val))
+      };
+
+      const App = () => {
+        const [channels, setChannels] = useState([]);
+        const [filteredChannels, setFilteredChannels] = useState([]);
+        const [categories, setCategories] = useState(['All']);
+        const [selectedCategory, setSelectedCategory] = useState('All');
+        const [activeChannel, setActiveChannel] = useState(null);
+        const [loading, setLoading] = useState(true);
+        const [settingsOpen, setSettingsOpen] = useState(false);
+        const [playerError, setPlayerError] = useState(false);
+        const [useNativeFallback, setUseNativeFallback] = useState(false);
+        const [isPlaying, setIsPlaying] = useState(true);
+        const [volume, setVolume] = useState(() => storage.get('volume', 0.7));
+        const [favorites, setFavorites] = useState(() => storage.get('favorites', []));
+        const [searchTerm, setSearchTerm] = useState('');
+        const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+        const [toastMsg, setToastMsg] = useState(null);
+        const [epgNow, setEpgNow] = useState('');
+
+        const videoRef = useRef(null);
+        const shakaPlayerRef = useRef(null);
+        const nativeVideoRef = useRef(null);
+
+        const showToast = (msg, duration = 2000) => {
+          setToastMsg(msg);
+          setTimeout(() => setToastMsg(null), duration);
+        };
+
+        // Fetch playlist
+        useEffect(() => {
+          const fetchPlaylist = async () => {
+            try {
+              setLoading(true);
+              const m3uUrl = 'https://raw.githubusercontent.com/iptv-org/iptv/master/playlists/telugu.m3u';
+              const res = await fetch(m3uUrl);
+              if (!res.ok) throw new Error();
+              const txt = await res.text();
+              let parsed = parseM3U(txt).filter(ch => ch.url && ch.url.startsWith('http'));
+              if (parsed.length === 0) throw new Error();
+              setChannels(parsed);
+              const cats = ['All', ...new Set(parsed.map(ch => ch.group).filter(Boolean))];
+              setCategories(cats);
+            } catch (err) {
+              console.warn('Using fallback channels');
+              setChannels(FALLBACK_CHANNELS);
+              setCategories(['All', 'Entertainment', 'News']);
+            } finally {
+              setLoading(false);
+            }
+          };
+          fetchPlaylist();
+        }, []);
+
+        // Load last channel
+        useEffect(() => {
+          if (channels.length > 0) {
+            const lastUrl = storage.get('lastChannelUrl', null);
+            const last = channels.find(ch => ch.url === lastUrl) || channels[0];
+            setActiveChannel(last);
+          }
+        }, [channels]);
+
+        useEffect(() => {
+          if (activeChannel) storage.set('lastChannelUrl', activeChannel.url);
+        }, [activeChannel]);
+
+        useEffect(() => {
+          storage.set('favorites', favorites);
+        }, [favorites]);
+
+        // Filtering
+        useEffect(() => {
+          let res = channels;
+          if (selectedCategory !== 'All') res = res.filter(ch => ch.group === selectedCategory);
+          if (searchTerm) res = res.filter(ch => ch.name.toLowerCase().includes(searchTerm.toLowerCase()));
+          if (showFavoritesOnly) res = res.filter(ch => favorites.includes(ch.url));
+          setFilteredChannels(res);
+        }, [selectedCategory, channels, searchTerm, showFavoritesOnly, favorites]);
+
+        // EPG update
+        useEffect(() => {
+          if (activeChannel && activeChannel.epgId && MOCK_EPG[activeChannel.epgId]) {
+            setEpgNow(`${MOCK_EPG[activeChannel.epgId].now} | Next: ${MOCK_EPG[activeChannel.epgId].next}`);
+          } else {
+            setEpgNow('Live stream');
+          }
+        }, [activeChannel]);
+
+        // Shaka player init
+        const initShaka = useCallback(async () => {
+          if (!activeChannel || !videoRef.current) return;
+          const videoEl = videoRef.current;
+          videoEl.volume = volume;
+          try {
+            if (shakaPlayerRef.current) shakaPlayerRef.current.destroy();
+            const player = new shaka.Player(videoEl);
+            shakaPlayerRef.current = player;
+            await player.load(activeChannel.url);
+            setPlayerError(false);
+            setUseNativeFallback(false);
+            setIsPlaying(true);
+            videoEl.play().catch(e => console.warn);
+          } catch (err) {
+            console.error('Shaka error', err);
+            setPlayerError(true);
+            setUseNativeFallback(true);
+          }
+        }, [activeChannel, volume]);
+
+        useEffect(() => {
+          if (activeChannel && !useNativeFallback) initShaka();
+        }, [activeChannel, initShaka, useNativeFallback]);
+
+        useEffect(() => {
+          if (useNativeFallback && activeChannel && nativeVideoRef.current) {
+            const vid = nativeVideoRef.current;
+            vid.src = activeChannel.url;
+            vid.volume = volume;
+            vid.load();
+            vid.play().catch(e => console.warn);
+            setIsPlaying(true);
+          }
+        }, [useNativeFallback, activeChannel, volume]);
+
+        const togglePlayPause = () => {
+          const video = useNativeFallback ? nativeVideoRef.current : videoRef.current;
+          if (!video) return;
+          if (video.paused) {
+            video.play();
+            setIsPlaying(true);
+            showToast('▶️ Playing');
+          } else {
+            video.pause();
+            setIsPlaying(false);
+            showToast('⏸ Paused');
+          }
+        };
+
+        const changeVolume = (newVol) => {
+          const vol = Math.min(1, Math.max(0, newVol));
+          setVolume(vol);
+          storage.set('volume', vol);
+          const video = useNativeFallback ? nativeVideoRef.current : videoRef.current;
+          if (video) video.volume = vol;
+          showToast(`🔊 Volume ${Math.round(vol * 100)}%`);
+        };
+
+        const nextChannel = (delta) => {
+          if (filteredChannels.length === 0) return;
+          const idx = filteredChannels.findIndex(ch => ch.url === activeChannel?.url);
+          let newIdx = idx + delta;
+          if (newIdx < 0) newIdx = filteredChannels.length - 1;
+          if (newIdx >= filteredChannels.length) newIdx = 0;
+          setActiveChannel(filteredChannels[newIdx]);
+          showToast(`📺 ${filteredChannels[newIdx].name}`);
+        };
+
+        const toggleFavorite = (channel) => {
+          if (!channel) return;
+          if (favorites.includes(channel.url)) {
+            setFavorites(favorites.filter(f => f !== channel.url));
+            showToast(`⭐ Removed from favorites`);
+          } else {
+            setFavorites([...favorites, channel.url]);
+            showToast(`❤️ Added to favorites`);
+          }
+        };
+
+        // Remote control
+        useEffect(() => {
+          const handleKey = (e) => {
+            const key = e.key;
+            switch (key) {
+              case 'ArrowUp': e.preventDefault(); changeVolume(volume + 0.05); break;
+              case 'ArrowDown': e.preventDefault(); changeVolume(volume - 0.05); break;
+              case 'ArrowLeft': e.preventDefault(); nextChannel(-1); break;
+              case 'ArrowRight': e.preventDefault(); nextChannel(1); break;
+              case 'MediaPlayPause': togglePlayPause(); break;
+              case 'f': case 'F': toggleFavorite(activeChannel); break;
+              case 's': case 'S': setSettingsOpen(prev => !prev); break;
+              case 'Escape': setSettingsOpen(false); break;
+              default: break;
+            }
+          };
+          window.addEventListener('keydown', handleKey);
+          return () => window.removeEventListener('keydown', handleKey);
+        }, [volume, activeChannel, filteredChannels, togglePlayPause]);
+
+        if (loading) {
+          return (
+            <div className="flex items-center justify-center h-full w-full bg-black">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-orange-500 mb-4"></div>
+                <p className="text-white">Loading Telugu channels...</p>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="relative h-full w-full flex flex-col bg-gradient-to-b from-gray-900 to-black">
+            {/* Header */}
+            <div className="flex justify-between items-center px-6 py-3 bg-black/40 backdrop-blur-sm z-10">
+              <div className="flex items-center gap-3">
+                <div className="text-3xl">📺</div>
+                <h1 className="text-xl font-bold text-orange-400">Telugu IPTV Pro</h1>
+                <span className="text-xs bg-gray-800 px-2 py-1 rounded-full">Tizen 9</span>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowFavoritesOnly(!showFavoritesOnly)} className={`p-2 rounded-full ${showFavoritesOnly ? 'bg-orange-600' : 'bg-gray-800'}`}>⭐ {showFavoritesOnly ? 'Fav' : 'All'}</button>
+                <button onClick={() => setSettingsOpen(true)} className="bg-gray-800 p-2 rounded-full">⚙️</button>
+              </div>
+            </div>
+
+            {/* Main content */}
+            <div className="flex flex-1 min-h-0 overflow-hidden px-4 gap-4">
+              {/* Left sidebar */}
+              <div className="w-64 flex-shrink-0 bg-gray-900/60 rounded-2xl p-3 overflow-y-auto custom-scroll">
+                <input type="text" placeholder="🔍 Search" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-gray-800 rounded p-2 mb-3 text-sm" />
+                <h2 className="text-lg font-semibold mb-3 text-orange-300">Categories</h2>
+                <div className="space-y-2">
+                  {categories.map(cat => (
+                    <button key={cat} onClick={() => setSelectedCategory(cat)} className={`w-full text-left px-3 py-2 rounded-xl ${selectedCategory === cat ? 'bg-orange-600' : 'bg-gray-800/70 hover:bg-gray-700'}`}>{cat}</button>
+                  ))}
+                </div>
+                <div className="mt-6 text-xs text-gray-400 text-center">{channels.length} channels | {favorites.length} fav</div>
+              </div>
+
+              {/* Player - shifted right */}
+              <div className="flex-1 flex justify-end items-start p-1">
+                <div className="w-[75%] max-w-4xl bg-black rounded-2xl shadow-2xl border border-gray-700">
+                  <div className="relative pt-[56.25%] bg-black">
+                    {!useNativeFallback ? (
+                      <video ref={videoRef} className="absolute top-0 left-0 w-full h-full object-contain" autoPlay playsInline />
+                    ) : (
+                      <video ref={nativeVideoRef} className="absolute top-0 left-0 w-full h-full object-contain" autoPlay playsInline />
+                    )}
+                    <div className="absolute bottom-2 left-3 bg-black/60 text-xs px-2 py-1 rounded truncate max-w-[60%]">{activeChannel?.name} | {epgNow}</div>
+                    <div className="absolute top-2 right-2 bg-black/60 p-1 rounded flex gap-2">
+                      <button onClick={() => toggleFavorite(activeChannel)}>{favorites.includes(activeChannel?.url) ? '❤️' : '🤍'}</button>
+                      <button onClick={togglePlayPause}>{isPlaying ? '⏸' : '▶️'}</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom channel row */}
+            <div className="w-full px-4 pb-6 pt-2">
+              <div className="overflow-x-auto custom-scroll">
+                <div className="flex gap-3 pb-2">
+                  {filteredChannels.map((ch, idx) => (
+                    <button key={idx} onClick={() => setActiveChannel(ch)} className={`channel-card flex-shrink-0 w-32 bg-gray-800/80 rounded-xl p-2 flex flex-col items-center ${activeChannel?.url === ch.url ? 'active-channel' : ''}`}>
+                      <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center mb-1 overflow-hidden">
+                        {ch.logo ? <img src={ch.logo} className="w-full h-full object-contain" onError={e => e.target.style.display = 'none'} alt="logo" /> : <span>📡</span>}
+                      </div>
+                      <span className="text-xs truncate w-full">{ch.name}</span>
+                      {favorites.includes(ch.url) && <span className="text-[10px] text-yellow-400">⭐</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Settings panel */}
+            <div className={`fixed inset-y-0 right-0 w-80 bg-gray-900 shadow-2xl transform transition-transform duration-300 ${settingsOpen ? 'translate-x-0' : 'translate-x-full'} z-50`}>
+              <div className="p-4">
+                <div className="flex justify-between items-center mb-4"><h2 className="text-orange-400 text-xl">Settings</h2><button onClick={() => setSettingsOpen(false)} className="text-white text-2xl">✖️</button></div>
+                <div className="space-y-4">
+                  <div><label className="block mb-1">Volume: {Math.round(volume*100)}%</label><input type="range" min="0" max="1" step="0.01" value={volume} onChange={e => changeVolume(parseFloat(e.target.value))} className="w-full" /></div>
+                  <button onClick={() => { setFavorites([]); showToast('Favorites cleared'); }} className="bg-red-800 p-2 rounded w-full">Clear Favorites</button>
+                  <div className="text-xs text-gray-400 text-center mt-4">Remote: ⬅️➡️ channel<br/>⬆️⬇️ volume | ⏯️ play/pause | F favorite | S settings</div>
+                </div>
+              </div>
+            </div>
+            {settingsOpen && <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setSettingsOpen(false)}></div>}
+            {toastMsg && <div className="toast">{toastMsg}</div>}
+          </div>
+        );
+      };
+
+      // Render after DOM ready
+      const rootEl = document.getElementById('root');
+      if (rootEl) {
+        ReactDOM.render(React.createElement(App), rootEl);
+      } else {
+        console.error('Root element missing');
+      }
+    })();
+  </script>
 </body>
 </html>
