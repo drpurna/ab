@@ -1,205 +1,597 @@
 <!DOCTYPE html>
-<html lang="te">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Telugu IPTV</title>
-  <meta name="description" content="Telugu IPTV for Samsung Smart TV" />
-  <link rel="icon" href="./icon.jpg" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>TV+ · Telugu IPTV (Favorites & JIO)</title>
+  <meta name="description" content="IPTV for Samsung Smart TV with favorites, last channel memory, JIO playlist">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23111111'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-weight='bold'%3ETV%2B%3C/text%3E%3C/svg%3E">
+  <!-- Tizen TV WebAPIs (required for AVPlay) -->
   <script type="text/javascript" src="$WEBAPIS/webapis/webapis.js"></script>
   <style>
-    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+    html, body, #root { width: 100%; height: 100%; overflow: hidden; background: black; font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    ::-webkit-scrollbar { display: none; }
+    @keyframes blink { 0%,100%{ opacity:1; } 50%{ opacity:0.2; } }
+    @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+    @keyframes slideUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
+    .blink { animation: blink 1.4s infinite; }
+    .fade-in { animation: fadeIn 0.2s ease; }
+    .slide-up { animation: slideUp 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1); }
+    .fav-star { filter: drop-shadow(0 0 2px rgba(255,215,0,0.6)); }
   </style>
-  <style rel="stylesheet" crossorigin>@import"https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap";*,:before,:after{--tw-border-spacing-x: 0;--tw-border-spacing-y: 0;--tw-translate-x: 0;--tw-translate-y: 0;--tw-rotate: 0;--tw-skew-x: 0;--tw-skew-y: 0;--tw-scale-x: 1;--tw-scale-y: 1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness: proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width: 0px;--tw-ring-offset-color: #fff;--tw-ring-color: rgb(59 130 246 / .5);--tw-ring-offset-shadow: 0 0 #0000;--tw-ring-shadow: 0 0 #0000;--tw-shadow: 0 0 #0000;--tw-shadow-colored: 0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x: 0;--tw-border-spacing-y: 0;--tw-translate-x: 0;--tw-translate-y: 0;--tw-rotate: 0;--tw-skew-x: 0;--tw-skew-y: 0;--tw-scale-x: 1;--tw-scale-y: 1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness: proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width: 0px;--tw-ring-offset-color: #fff;--tw-ring-color: rgb(59 130 246 / .5);--tw-ring-offset-shadow: 0 0 #0000;--tw-ring-shadow: 0 0 #0000;--tw-shadow: 0 0 #0000;--tw-shadow-colored: 0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }*,:before,:after{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}:before,:after{--tw-content: ""}html,:host{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:ui-sans-serif,system-ui,sans-serif,"Apple Color Emoji","Segoe UI Emoji",Segoe UI Symbol,"Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,samp,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dl,dd,h1,h2,h3,h4,h5,h6,hr,figure,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}ol,ul,menu{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::-moz-placeholder,textarea::-moz-placeholder{opacity:1;color:#9ca3af}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}button,[role=button]{cursor:pointer}:disabled{cursor:default}img,svg,video,canvas,audio,iframe,embed,object{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}*,*:before,*:after{box-sizing:border-box;margin:0;padding:0;-webkit-user-select:none;-moz-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;outline:none}html,body,#root{width:100vw;height:100vh;overflow:hidden;background:#000;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}::-webkit-scrollbar{width:0;height:0}input::-moz-placeholder{color:#ffffff2e}input::placeholder{color:#ffffff2e}.\!visible{visibility:visible!important}.visible{visibility:visible}.static{position:static}.fixed{position:fixed}.absolute{position:absolute}.relative{position:relative}.flex{display:flex}.hidden{display:none}.flex-1{flex:1 1 0%}.transform{transform:translate(var(--tw-translate-x),var(--tw-translate-y)) rotate(var(--tw-rotate)) skew(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.resize{resize:both}.border{border-width:1px}.uppercase{text-transform:uppercase}.tabular-nums{--tw-numeric-spacing: tabular-nums;font-variant-numeric:var(--tw-ordinal) var(--tw-slashed-zero) var(--tw-numeric-figure) var(--tw-numeric-spacing) var(--tw-numeric-fraction)}.outline{outline-style:solid}.ring{--tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow, 0 0 #0000)}.blur{--tw-blur: blur(8px);filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.filter{filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.transition{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}@keyframes fadeIn{0%{opacity:0}to{opacity:1}}@keyframes slideUp{0%{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}@keyframes slideRight{0%{opacity:0;transform:translate(100%)}to{opacity:1;transform:translate(0)}}@keyframes spinAnim{0%{transform:rotate(0)}to{transform:rotate(360deg)}}@keyframes blink{0%,to{opacity:1}50%{opacity:.15}}.fade-in{animation:fadeIn .22s ease both}.slide-up{animation:slideUp .28s cubic-bezier(.16,1,.3,1) both}.slide-right{animation:slideRight .3s cubic-bezier(.16,1,.3,1) both}.spin{animation:spinAnim .85s linear infinite}.blink{animation:blink 1.6s ease-in-out infinite}</style>
-  <script type="module">
-    // ==================== ORIGINAL REACT & REACTDOM (minified, unchanged) ====================
-    // ... (the full original React and ReactDOM code would be here)
-    // Since it's too long to repeat, we assume it's exactly as in your original index.html.
-    // For the final file, you must keep the original minified React/ReactDOM from your build.
-    // Below is just a placeholder; in practice, you'd paste the original script content here.
-    // ==================== END ORIGINAL ====================
-
-    // ==================== FIXES AND ENHANCEMENTS ====================
-    (function() {
-      // 1. IndexedDB caching (replaces localStorage for playlists)
-      const DB_NAME = 'TeluguIPTV';
-      const DB_STORE = 'playlists';
-      const DB_VERSION = 1;
-      let dbPromise = null;
-      function openDB() {
-        if (!dbPromise) {
-          dbPromise = new Promise((resolve, reject) => {
-            const request = indexedDB.open(DB_NAME, DB_VERSION);
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => resolve(request.result);
-            request.onupgradeneeded = (e) => {
-              const db = e.target.result;
-              if (!db.objectStoreNames.contains(DB_STORE)) {
-                db.createObjectStore(DB_STORE, { keyPath: 'id' });
-              }
-            };
-          });
-        }
-        return dbPromise;
-      }
-      window.savePlaylistToIDB = async function(sourceId, channels, ttlMs) {
-        try {
-          const db = await openDB();
-          const tx = db.transaction(DB_STORE, 'readwrite');
-          const store = tx.objectStore(DB_STORE);
-          store.put({ id: sourceId, channels, timestamp: Date.now(), ttlMs });
-          await tx.complete;
-          return true;
-        } catch (e) {
-          console.warn('IDB save failed, fallback to localStorage', e);
-          localStorage.setItem(`tiptv_cache_v3_${sourceId}`, JSON.stringify({ channels, timestamp: Date.now(), ttlMs }));
-          return false;
-        }
-      };
-      window.loadPlaylistFromIDB = async function(sourceId) {
-        try {
-          const db = await openDB();
-          const tx = db.transaction(DB_STORE, 'readonly');
-          const store = tx.objectStore(DB_STORE);
-          const record = await new Promise((resolve) => {
-            const req = store.get(sourceId);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => resolve(null);
-          });
-          if (record && Date.now() - record.timestamp < record.ttlMs) return record.channels;
-          return null;
-        } catch (e) {
-          console.warn('IDB load failed, fallback to localStorage', e);
-          const fallback = localStorage.getItem(`tiptv_cache_v3_${sourceId}`);
-          if (fallback) {
-            const parsed = JSON.parse(fallback);
-            if (Date.now() - parsed.timestamp < parsed.ttlMs) return parsed.channels;
-          }
-          return null;
-        }
-      };
-
-      // 2. Web Worker integration for M3U parsing
-      let activeWorker = null;
-      window.parseWithWorker = function(text, id, onProgress, onResult, onError) {
-        if (activeWorker) activeWorker.terminate();
-        activeWorker = new Worker('./m3u-worker.js');
-        activeWorker.onmessage = (e) => {
-          const { type, id: msgId, channels, pct, status, message } = e.data;
-          if (type === 'PROGRESS' && msgId === id) onProgress(pct, status);
-          else if (type === 'RESULT' && msgId === id) { onResult(channels); activeWorker = null; }
-          else if (type === 'ERROR' && msgId === id) { onError(message); activeWorker = null; }
-        };
-        activeWorker.postMessage({ type: 'PARSE', id, text });
-      };
-      window.fetchAndParseWithWorker = function(url, id, onProgress, onResult, onError) {
-        if (activeWorker) activeWorker.terminate();
-        activeWorker = new Worker('./m3u-worker.js');
-        activeWorker.onmessage = (e) => {
-          const { type, id: msgId, channels, pct, status, message } = e.data;
-          if (type === 'PROGRESS' && msgId === id) onProgress(pct, status);
-          else if (type === 'RESULT' && msgId === id) { onResult(channels); activeWorker = null; }
-          else if (type === 'ERROR' && msgId === id) { onError(message); activeWorker = null; }
-        };
-        activeWorker.postMessage({ type: 'FETCH_AND_PARSE', url, id });
-      };
-
-      // 3. Custom URL source
-      const originalSources = [
-        { id: 'tel', label: 'Telugu Only', desc: 'Telugu language channels (~200)', url: 'https://iptv-org.github.io/iptv/languages/tel.m3u' },
-        { id: 'india', label: 'India — All', desc: 'All Indian channels (~800)', url: 'https://iptv-org.github.io/iptv/countries/in.m3u' },
-        { id: 'sports', label: 'Sports', desc: 'Sports channels worldwide', url: 'https://iptv-org.github.io/iptv/categories/sports.m3u' },
-        { id: 'news', label: 'News', desc: 'News channels worldwide', url: 'https://iptv-org.github.io/iptv/categories/news.m3u' },
-        { id: 'entertainment', label: 'Entertainment', desc: 'Entertainment channels worldwide', url: 'https://iptv-org.github.io/iptv/categories/entertainment.m3u' }
-      ];
-      const CUSTOM_SOURCE = { id: 'custom', label: 'Custom URL', desc: 'Enter your own M3U link', url: '' };
-      window.mt = [...originalSources, CUSTOM_SOURCE];
-
-      // 4. Resume playback & last category
-      window.LAST_CHANNEL_KEY = 'tiptv_last_channel';
-      window.LAST_CATEGORY_KEY = 'tiptv_last_category';
-
-      // 5. Volume overlay debounce
-      let volumeTimer = null;
-      window.showVolumeOverlay = function(setVisible) {
-        if (volumeTimer) clearTimeout(volumeTimer);
-        setVisible(true);
-        volumeTimer = setTimeout(() => setVisible(false), 2000);
-      };
-
-      // 6. Numeric jump buffer
-      let digitBuffer = '';
-      let digitTimeout = null;
-      window.handleDigit = function(digit, filteredChannels, setCurrentChannelIndex) {
-        if (digitTimeout) clearTimeout(digitTimeout);
-        digitBuffer += digit;
-        digitTimeout = setTimeout(() => { digitBuffer = ''; }, 1500);
-        const idx = parseInt(digitBuffer) - 1;
-        if (idx >= 0 && idx < filteredChannels.length) {
-          setCurrentChannelIndex(idx);
-          digitBuffer = '';
-          if (digitTimeout) clearTimeout(digitTimeout);
-        }
-      };
-
-      // 7. Auto-retry for stream errors (integrated into player hook)
-      // The original player hook (Wp) will be extended with retry logic.
-      const originalWp = window.Wp;
-      if (originalWp) {
-        window.Wp = function() {
-          const player = originalWp();
-          const originalPlayChannel = player.playChannel;
-          player.playChannel = async (url, name, retries = 2) => {
-            for (let i = 0; i <= retries; i++) {
-              try {
-                await originalPlayChannel(url, name);
-                return;
-              } catch (e) {
-                if (i === retries) throw e;
-                await new Promise(r => setTimeout(r, 1000 * (i+1)));
-              }
-            }
-          };
-          return player;
-        };
-      }
-
-      // 8. Apply settings (aspect ratio, showBug, hintBar) from config
-      window.applySettings = function(config) {
-        const overlay = document.querySelector('.channel-overlay');
-        if (overlay) overlay.style.display = config.showBug !== false ? 'flex' : 'none';
-        const hintBar = document.querySelector('.hint-bar');
-        if (hintBar) hintBar.style.display = config.hintBar !== false ? 'flex' : 'none';
-        const video = document.getElementById('avplay-video');
-        if (video) {
-          const ratio = config.aspectRatio || 0;
-          if (ratio === 1) video.style.objectFit = 'contain';
-          else if (ratio === 2) video.style.objectFit = 'contain';
-          else if (ratio === 3) video.style.objectFit = 'cover';
-          else video.style.objectFit = 'contain';
-        }
-      };
-
-      // 9. Send CACHE_M3U to service worker after fetching playlist
-      window.cacheM3uToSW = function(url, content) {
-        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ type: 'CACHE_M3U', url, text: content });
-        }
-      };
-    })();
-    // ==================== END FIXES ====================
-
-    // The original React component (y0) would be defined here.
-    // Since the original is huge, we assume it's present exactly as in your build.
-    // To avoid duplication, I'm not rewriting it; instead, I'm providing the minimal changes to inject.
-    // In practice, you should replace the original y0 with the enhanced version below.
-    // However, for the final file you can keep the original y0 and just override the necessary parts.
-    // Given the constraints, I'll output a fully self-contained HTML that includes the original minified code.
-    // For the real answer, you would copy the entire original index.html content and then append the fixes.
-    // But since I cannot reproduce 500KB here, I'm providing the patch in a clear manner.
-  </script>
 </head>
 <body>
-  <div id="root"></div>
+<div id="root"></div>
+
+<script>
+(function(){
+  // ---- REACT & REACT-DOM (simplified production build - but we'll implement full app with native JS + functional components using Preact? 
+  // To keep everything solid, we write a lightweight custom component system? No, better to use React from CDN? 
+  // The original used React. We will embed React, ReactDOM, and build the app declaratively.
+  // For reliability on Tizen, we load React from CDN + our app logic.
+  const script = document.createElement('script');
+  script.src = 'https://unpkg.com/react@18.2.0/umd/react.development.js';
+  const script2 = document.createElement('script');
+  script2.src = 'https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js';
+  script.onload = () => {
+    script2.onload = () => {
+      // After React loaded, bootstrap our application
+      initApp();
+    };
+    document.head.appendChild(script2);
+  };
+  document.head.appendChild(script);
+})();
+
+async function initApp() {
+  const { useState, useEffect, useRef, useCallback, useMemo } = React;
+  const { createRoot } = ReactDOM;
+
+  // ---------- CONFIGURATION ----------
+  const STORAGE_CFG = 'tiptv_cfg_v2';
+  const STORAGE_FAV = 'tiptv_favorites_v2';
+  const STORAGE_LAST = 'tiptv_last_channel';
+
+  // Playlist sources: only Telugu, India + NEW JIO playlist
+  const PLAYLIST_SOURCES = [
+    { id: 'tel', label: 'తెలుగు Telugu', desc: 'Telugu language channels', icon: '🌟', url: 'https://iptv-org.github.io/iptv/languages/tel.m3u' },
+    { id: 'india', label: 'India · All', desc: 'All Indian channels', icon: '🇮🇳', url: 'https://iptv-org.github.io/iptv/countries/in.m3u' },
+    { id: 'jio', label: 'JIO Playlist', desc: 'Jio / Indian premium', icon: '📡', url: 'https://jioplaylist.joinus-apiworker.workers.dev/playlist.m3u' }
+  ];
+
+  const DEFAULT_SOURCE = 'tel';
+
+  // Helper: localStorage helpers
+  const storage = {
+    get(key, def = null) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; } },
+    set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch { return false; } }
+  };
+
+  // ----- Favorites management (store URLs)
+  function getFavorites() { return new Set(storage.get(STORAGE_FAV, [])); }
+  function saveFavorites(set) { storage.set(STORAGE_FAV, Array.from(set)); }
+  function toggleFavorite(url) {
+    const favs = getFavorites();
+    if (favs.has(url)) favs.delete(url);
+    else favs.add(url);
+    saveFavorites(favs);
+    return favs;
+  }
+  function isFavorite(url) { return getFavorites().has(url); }
+
+  // ----- M3U parsing + worker (simple fetch + parse)
+  async function fetchPlaylist(url, onProgress) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const proxies = [url, `https://corsproxy.io/?${encodeURIComponent(url)}`, `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`];
+      for (let proxy of proxies) {
+        try {
+          const res = await fetch(proxy, { signal: controller.signal, headers: { 'Accept': 'application/x-mpegurl' } });
+          if (res.ok) {
+            const text = await res.text();
+            if (text.includes('#EXTINF') || text.includes('#EXTM3U')) {
+              clearTimeout(timeout);
+              return text;
+            }
+          }
+        } catch(e) {}
+      }
+      return null;
+    } catch { return null; } finally { clearTimeout(timeout); }
+  }
+
+  function parseM3U(text) {
+    const channels = [];
+    let current = null;
+    const lines = text.split(/\r?\n/);
+    for (let line of lines) {
+      line = line.trim();
+      if (!line) continue;
+      if (line.startsWith('#EXTINF:')) {
+        const matchName = /tvg-name="([^"]*)"/i.exec(line);
+        const matchLogo = /tvg-logo="([^"]*)"/i.exec(line);
+        const matchGroup = /group-title="([^"]*)"/i.exec(line);
+        const lastComma = line.lastIndexOf(',');
+        const rawName = lastComma !== -1 ? line.slice(lastComma+1).trim() : 'Channel';
+        current = {
+          id: '',
+          name: (matchName ? matchName[1] : rawName) || 'Unknown',
+          logo: matchLogo ? matchLogo[1] : '',
+          group: (matchGroup ? matchGroup[1] : 'General') || 'General',
+          url: ''
+        };
+      } else if (!line.startsWith('#') && current && (line.startsWith('http') || line.startsWith('rtmp'))) {
+        current.url = line;
+        current.id = `ch_${channels.length}`;
+        channels.push(current);
+        current = null;
+      }
+    }
+    return channels;
+  }
+
+  // ---------- MAIN APP COMPONENT ----------
+  const App = () => {
+    // playlists & UI state
+    const [activeSourceId, setActiveSourceId] = useState(() => storage.get(STORAGE_CFG, {}).source || DEFAULT_SOURCE);
+    const [channels, setChannels] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [loadProgress, setLoadProgress] = useState(0);
+    const [loadStatus, setLoadStatus] = useState('Loading...');
+    const [error, setError] = useState(null);
+    
+    // UI navigation zones: 'strip' (channels) , 'cats' (categories), 'settings', 'search', 'favPopup' (optional)
+    const [focusZone, setFocusZone] = useState('strip');
+    const [selectedCat, setSelectedCat] = useState('All');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [currentChannelIdx, setCurrentChannelIdx] = useState(-1);
+    const [focusedChannelIdx, setFocusedChannelIdx] = useState(0);
+    const [focusedCatIdx, setFocusedCatIdx] = useState(0);
+    const [showSettings, setShowSettings] = useState(false);
+    const [showSearch, setShowSearch] = useState(false);
+    const [volumePopup, setVolumePopup] = useState(false);
+    const [favToast, setFavToast] = useState(null);
+    
+    // Player state
+    const [playerState, setPlayerState] = useState('IDLE'); // IDLE, LOADING, PLAYING, PAUSED, ERROR
+    const [isBuffering, setIsBuffering] = useState(false);
+    const [isMuted, setIsMuted] = useState(false);
+    const [playerError, setPlayerError] = useState(null);
+    const videoRef = useRef(null);
+    const isTizen = !!window.webapis?.avplay;
+    const avPlayRef = useRef(null);
+    
+    // clock
+    const [clock, setClock] = useState('');
+    useEffect(() => {
+      const update = () => setClock(new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }));
+      update();
+      const iv = setInterval(update, 30000);
+      return () => clearInterval(iv);
+    }, []);
+
+    // last channel memory
+    const lastChannelRef = useRef(null);
+    
+    // load playlist based on activeSourceId
+    const loadPlaylist = useCallback(async (force = false) => {
+      const source = PLAYLIST_SOURCES.find(s => s.id === activeSourceId);
+      if (!source) return;
+      setLoading(true);
+      setError(null);
+      setLoadProgress(0);
+      setLoadStatus(`Fetching ${source.label}...`);
+      try {
+        const raw = await fetchPlaylist(source.url);
+        if (!raw) throw new Error('Could not fetch playlist');
+        setLoadProgress(40);
+        setLoadStatus('Parsing channels...');
+        const parsed = parseM3U(raw);
+        setChannels(parsed);
+        setLoadProgress(100);
+        setLoadStatus(`${parsed.length} channels ready`);
+        
+        // restore last channel from memory if exists and current channel not set
+        const last = storage.get(STORAGE_LAST);
+        if (last && last.sourceId === activeSourceId && !force && currentChannelIdx === -1) {
+          const idx = parsed.findIndex(ch => ch.url === last.channelUrl);
+          if (idx !== -1) {
+            setCurrentChannelIdx(idx);
+            setFocusedChannelIdx(idx);
+            // Auto-play last channel after load
+            setTimeout(() => playChannelByIndex(idx, parsed), 500);
+          } else {
+            storage.set(STORAGE_LAST, null);
+          }
+        }
+      } catch (err) {
+        setError(err.message);
+        setLoadStatus('Failed');
+      } finally {
+        setLoading(false);
+      }
+    }, [activeSourceId, currentChannelIdx]);
+    
+    useEffect(() => {
+      loadPlaylist();
+    }, [activeSourceId]);
+    
+    // play channel
+    const playChannelByIndex = useCallback(async (idx, chList = channels) => {
+      const channel = chList[idx];
+      if (!channel || !channel.url) return;
+      // store last channel
+      storage.set(STORAGE_LAST, { sourceId: activeSourceId, channelUrl: channel.url, channelName: channel.name });
+      lastChannelRef.current = { sourceId: activeSourceId, url: channel.url };
+      setCurrentChannelIdx(idx);
+      setFocusedChannelIdx(idx);
+      setPlayerError(null);
+      setPlayerState('LOADING');
+      setIsBuffering(true);
+      
+      if (isTizen && window.webapis?.avplay) {
+        try {
+          const av = window.webapis.avplay;
+          avPlayRef.current = av;
+          const state = av.getState();
+          if (state !== 'NONE' && state !== 'IDLE') { av.stop(); av.close(); }
+          av.open(channel.url);
+          av.setDisplayRect(0, 0, 1920, 1080);
+          av.setDisplayMethod('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+          av.setListener({
+            onbufferingstart: () => setIsBuffering(true),
+            onbufferingcomplete: () => setIsBuffering(false),
+            oncurrentplaytime: () => {},
+            onerror: (e) => { setPlayerError('Stream error'); setPlayerState('ERROR'); setIsBuffering(false); },
+            onstreamcompleted: () => setPlayerState('IDLE')
+          });
+          av.prepare();
+          av.play();
+          setPlayerState('PLAYING');
+          setIsBuffering(false);
+        } catch(e) { setPlayerError(e.message); setPlayerState('ERROR'); setIsBuffering(false); }
+      } else {
+        // fallback video element
+        const video = document.getElementById('fallback-video');
+        if (video) {
+          video.src = channel.url;
+          video.load();
+          video.oncanplay = () => { setPlayerState('PLAYING'); setIsBuffering(false); };
+          video.onwaiting = () => setIsBuffering(true);
+          video.onplaying = () => { setPlayerState('PLAYING'); setIsBuffering(false); };
+          video.onerror = () => { setPlayerError('Cannot play'); setPlayerState('ERROR'); };
+          video.muted = isMuted;
+          video.play().catch(() => setPlayerState('ERROR'));
+        }
+      }
+    }, [activeSourceId, channels, isTizen, isMuted]);
+    
+    // toggle favorite for current channel
+    const toggleCurrentFavorite = useCallback(() => {
+      if (currentChannelIdx === -1 || !channels[currentChannelIdx]) return;
+      const ch = channels[currentChannelIdx];
+      const url = ch.url;
+      const newFavs = toggleFavorite(url);
+      const isNowFav = newFavs.has(url);
+      setFavToast(isNowFav ? `❤️ Added: ${ch.name}` : `♡ Removed: ${ch.name}`);
+      setTimeout(() => setFavToast(null), 1800);
+      // force re-render categories & update UI (trigger state)
+      setChannels(prev => [...prev]); // trick to refresh
+    }, [currentChannelIdx, channels]);
+    
+    // categories: All + groups + Favorites (⭐)
+    const allCategories = useMemo(() => {
+      const groups = new Map();
+      groups.set('All', { name: 'All', icon: '📺', count: channels.length });
+      for (let ch of channels) {
+        const grp = ch.group || 'General';
+        if (!groups.has(grp)) groups.set(grp, { name: grp, icon: getGroupIcon(grp), count: 0 });
+        groups.get(grp).count++;
+      }
+      const cats = Array.from(groups.values());
+      // add Favorites special category at top
+      return [{ name: '⭐ Favorites', icon: '⭐', count: 0, isFavCat: true }, ...cats];
+    }, [channels]);
+    
+    // filtered channels based on selected category + search + favorites logic
+    const filteredChannels = useMemo(() => {
+      let result = [...channels];
+      if (selectedCat === '⭐ Favorites') {
+        const favSet = getFavorites();
+        result = result.filter(ch => favSet.has(ch.url));
+      } else if (selectedCat !== 'All') {
+        result = result.filter(ch => (ch.group || 'General') === selectedCat);
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        result = result.filter(ch => ch.name.toLowerCase().includes(q));
+      }
+      return result;
+    }, [channels, selectedCat, searchQuery]);
+    
+    // update focused index when filtered list changes
+    useEffect(() => {
+      if (focusedChannelIdx >= filteredChannels.length) setFocusedChannelIdx(Math.max(0, filteredChannels.length-1));
+    }, [filteredChannels]);
+    
+    // helper icons
+    function getGroupIcon(g) {
+      const gL = g.toLowerCase();
+      if (gL.includes('news')) return '📰';
+      if (gL.includes('movie')) return '🎬';
+      if (gL.includes('sport')) return '🏏';
+      if (gL.includes('music')) return '🎵';
+      if (gL.includes('devot')) return '🙏';
+      return '📡';
+    }
+    
+    // volume OSD auto hide
+    let volTimer;
+    const showVolumeOSD = () => { setVolumePopup(true); clearTimeout(volTimer); volTimer = setTimeout(() => setVolumePopup(false), 1500); };
+    
+    // remote control handler (Samsung keys)
+    useEffect(() => {
+      const handleKey = (e) => {
+        const key = e.keyCode;
+        // prevent default for media keys
+        const preventKeys = [38,40,37,39,13,10009,10182,415,19,10252,413,417,412,403,404,405,406,458,10135,457,427,428,447,448,449];
+        if (preventKeys.includes(key)) e.preventDefault();
+        
+        // navigation between zones
+        if (showSettings) return; // settings panel has own handler but we close on BACK
+        if (showSearch) {
+          if (key === 10009 || key === 27) { setShowSearch(false); setFocusZone('strip'); setSearchQuery(''); }
+          return;
+        }
+        
+        switch(key) {
+          case 38: // UP
+            if (focusZone === 'strip') setFocusZone('cats');
+            else if (focusZone === 'cats') setFocusZone('strip');
+            break;
+          case 40: // DOWN
+            if (focusZone === 'cats') setFocusZone('strip');
+            else if (focusZone === 'strip') setFocusZone('cats');
+            break;
+          case 37: // LEFT
+            if (focusZone === 'strip') setFocusedChannelIdx(prev => Math.max(0, prev-1));
+            if (focusZone === 'cats') setFocusedCatIdx(prev => Math.max(0, prev-1));
+            break;
+          case 39: // RIGHT
+            if (focusZone === 'strip') setFocusedChannelIdx(prev => Math.min(filteredChannels.length-1, prev+1));
+            if (focusZone === 'cats') setFocusedCatIdx(prev => Math.min(allCategories.length-1, prev+1));
+            break;
+          case 13: // OK / ENTER
+            if (focusZone === 'strip' && filteredChannels[focusedChannelIdx]) {
+              playChannelByIndex(focusedChannelIdx, filteredChannels);
+            }
+            if (focusZone === 'cats') {
+              const cat = allCategories[focusedCatIdx];
+              if (cat) {
+                setSelectedCat(cat.name);
+                setFocusZone('strip');
+                setFocusedChannelIdx(0);
+              }
+            }
+            break;
+          case 10009: // BACK
+            if (focusZone !== 'strip') { setFocusZone('strip'); }
+            else if (showSearch) setShowSearch(false);
+            break;
+          case 403: // RED - toggle overlay (favorites toast)
+            toggleCurrentFavorite();
+            break;
+          case 404: // GREEN - search
+            setShowSearch(true);
+            setFocusZone('search');
+            break;
+          case 405: // YELLOW - refresh playlist (force)
+            loadPlaylist(true);
+            break;
+          case 406: // BLUE - settings panel
+            setShowSettings(true);
+            break;
+          case 447: // VOLUME UP
+            if (isTizen && window.webapis?.tvaudiocontrol) {
+              let vol = window.webapis.tvaudiocontrol.getVolume();
+              vol = Math.min(100, vol + 5);
+              window.webapis.tvaudiocontrol.setVolume(vol);
+            } else {
+              const video = document.getElementById('fallback-video');
+              if (video) video.volume = Math.min(1, (video.volume || 0.5) + 0.05);
+            }
+            showVolumeOSD();
+            break;
+          case 448: // VOLUME DOWN
+            if (isTizen && window.webapis?.tvaudiocontrol) {
+              let vol = window.webapis.tvaudiocontrol.getVolume();
+              vol = Math.max(0, vol - 5);
+              window.webapis.tvaudiocontrol.setVolume(vol);
+            } else {
+              const video = document.getElementById('fallback-video');
+              if (video) video.volume = Math.max(0, (video.volume || 0.5) - 0.05);
+            }
+            showVolumeOSD();
+            break;
+          case 449: // MUTE
+            if (isTizen && window.webapis?.tvaudiocontrol) {
+              const muted = !window.webapis.tvaudiocontrol.isMute();
+              window.webapis.tvaudiocontrol.setMute(muted);
+              setIsMuted(muted);
+            } else {
+              const video = document.getElementById('fallback-video');
+              if (video) video.muted = !video.muted;
+              setIsMuted(v => !v);
+            }
+            showVolumeOSD();
+            break;
+          case 427: case 428: // CH up/down
+            if (focusZone === 'strip') {
+              let newIdx = key === 427 ? focusedChannelIdx+1 : focusedChannelIdx-1;
+              if (newIdx >=0 && newIdx < filteredChannels.length) {
+                setFocusedChannelIdx(newIdx);
+                playChannelByIndex(newIdx, filteredChannels);
+              }
+            }
+            break;
+          default: break;
+        }
+      };
+      window.addEventListener('keydown', handleKey);
+      return () => window.removeEventListener('keydown', handleKey);
+    }, [focusZone, filteredChannels, focusedChannelIdx, focusedCatIdx, allCategories, showSettings, showSearch, loadPlaylist, toggleCurrentFavorite, playChannelByIndex, isTizen]);
+    
+    // Volume OSD component
+    const VolumeOSD = () => {
+      const vol = (() => {
+        if (isTizen && window.webapis?.tvaudiocontrol) return window.webapis.tvaudiocontrol.getVolume();
+        const vid = document.getElementById('fallback-video');
+        return vid ? Math.round(vid.volume * 100) : 50;
+      })();
+      if (!volumePopup) return null;
+      return React.createElement('div', { style: volumeOSDStyle }, 
+        React.createElement('div', { style: { background: '#111', padding: '12px 24px', borderRadius: 40, display:'flex', alignItems:'center', gap:16 } },
+          React.createElement('span', { style: { fontSize: 22 } }, isMuted ? '🔇' : '🔊'),
+          React.createElement('div', { style: { width: 200, height: 6, background: '#333', borderRadius: 4 } },
+            React.createElement('div', { style: { width: `${isMuted ? 0 : vol}%`, height: 6, background: 'white', borderRadius: 4 } })),
+          React.createElement('span', { style: { fontSize: 18, minWidth: 40 } }, isMuted ? 'MUTE' : `${vol}%`)
+        )
+      );
+    };
+    const volumeOSDStyle = { position: 'absolute', bottom: 200, left: '50%', transform: 'translateX(-50%)', zIndex: 200, background: 'rgba(0,0,0,0.7)', borderRadius: 60, backdropFilter: 'blur(8px)', padding: 8 };
+    
+    // Favorite Toast
+    const FavToast = () => favToast ? React.createElement('div', { style: { position: 'absolute', bottom: 280, left: '50%', transform: 'translateX(-50%)', background: '#1f1f1f', color: '#ffd966', padding: '10px 24px', borderRadius: 40, fontSize: 16, fontWeight: 500, zIndex: 201, pointerEvents: 'none', boxShadow: '0 4px 12px black' } }, favToast) : null;
+    
+    // Settings panel (simplified)
+    const SettingsPanel = () => {
+      if (!showSettings) return null;
+      const sources = PLAYLIST_SOURCES;
+      return React.createElement('div', { style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+        React.createElement('div', { style: { background: '#0c0c0c', width: 560, borderRadius: 32, padding: 28, border: '1px solid #2a2a2a' } },
+          React.createElement('h2', { style: { color: 'white', fontSize: 28, marginBottom: 20 } }, 'Settings'),
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
+            React.createElement('p', { style: { color: '#aaa' } }, 'Playlist Source'),
+            sources.map(src => React.createElement('button', { key: src.id, onClick: () => { setActiveSourceId(src.id); storage.set(STORAGE_CFG, { source: src.id }); setShowSettings(false); }, style: { background: activeSourceId === src.id ? '#2c2c2c' : '#1a1a1a', border: '1px solid #3a3a3a', padding: 12, borderRadius: 20, color: 'white', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' } },
+              React.createElement('span', null, `${src.icon} ${src.label}`),
+              activeSourceId === src.id && React.createElement('span', null, '✓')
+            )),
+            React.createElement('button', { onClick: () => { setShowSettings(false); }, style: { marginTop: 20, background: '#2a2a2a', border: 'none', padding: 12, borderRadius: 30, color: 'white' } }, 'Close (BACK)')
+          )
+        )
+      );
+    };
+    
+    // Search modal
+    const SearchModal = () => {
+      if (!showSearch) return null;
+      return React.createElement('div', { style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 250, display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+        React.createElement('div', { style: { background: '#0f0f0f', width: 680, borderRadius: 48, padding: 28 } },
+          React.createElement('input', { autoFocus: true, type: 'text', placeholder: 'Search channels...', value: searchQuery, onChange: e => setSearchQuery(e.target.value), style: { width: '100%', background: '#1c1c1c', border: '1px solid #333', padding: 20, fontSize: 22, borderRadius: 60, color: 'white', outline: 'none' } }),
+          React.createElement('p', { style: { marginTop: 16, color: '#aaa', textAlign: 'center' } }, `${filteredChannels.length} results · 🟢 press BACK to close`)
+        )
+      );
+    };
+    
+    // Channel Strip (horizontal row)
+    const ChannelStrip = () => {
+      if (filteredChannels.length === 0) return React.createElement('div', { style: { textAlign: 'center', color: '#666', marginTop: 100 } }, 'No channels');
+      const itemWidth = 280;
+      const gap = 28;
+      const translate = (focusedChannelIdx * (itemWidth + gap)) - (960 - itemWidth/2);
+      return React.createElement('div', { style: { position: 'relative', height: 380, overflow: 'hidden', marginTop: 20 } },
+        React.createElement('div', { style: { display: 'flex', gap: gap, transform: `translateX(-${Math.max(0, translate)}px)`, transition: 'transform 0.25s ease', paddingLeft: 100, paddingRight: 100 } },
+          filteredChannels.map((ch, idx) => {
+            const isActive = idx === currentChannelIdx;
+            const isFocused = idx === focusedChannelIdx;
+            const fav = isFavorite(ch.url);
+            return React.createElement('button', { key: ch.id || idx, onClick: () => playChannelByIndex(idx, filteredChannels), style: { flex: '0 0 auto', width: itemWidth, background: isActive ? 'rgba(255,255,255,0.15)' : (isFocused ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)'), borderRadius: 28, border: `2px solid ${isFocused ? '#aaa' : 'transparent'}`, padding: '18px 12px', cursor: 'pointer', transition: 'all 0.1s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 } },
+              React.createElement('div', { style: { position: 'relative' } },
+                React.createElement('img', { src: ch.logo || '', onError: e => e.target.style.display='none', style: { width: 110, height: 110, objectFit: 'contain', borderRadius: 20, background: '#111' } }),
+                fav && React.createElement('span', { style: { position: 'absolute', top: -6, right: -6, fontSize: 26 } }, '⭐')
+              ),
+              React.createElement('div', { style: { textAlign: 'center' } },
+                React.createElement('p', { style: { color: 'white', fontWeight: isActive ? 800 : 500, fontSize: 18 } }, ch.name),
+                React.createElement('p', { style: { color: '#aaa', fontSize: 12 } }, ch.group || 'General')
+              ),
+              isActive && React.createElement('div', { className: 'blink', style: { width: 8, height: 8, background: '#ff3b30', borderRadius: 10, marginTop: 4 } })
+            );
+          })
+        )
+      );
+    };
+    
+    // Categories row
+    const CategoriesRow = () => {
+      return React.createElement('div', { style: { display: 'flex', gap: 12, overflowX: 'auto', padding: '0 80px', marginBottom: 10, scrollBehavior: 'smooth' } },
+        allCategories.map((cat, idx) => {
+          const isActive = selectedCat === cat.name;
+          const isFocused = focusZone === 'cats' && focusedCatIdx === idx;
+          return React.createElement('button', { key: cat.name, onClick: () => { setSelectedCat(cat.name); setFocusZone('strip'); }, style: { flexShrink: 0, padding: '10px 24px', borderRadius: 40, background: isActive ? 'white' : (isFocused ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)'), border: `1px solid ${isFocused ? '#ddd' : 'transparent'}`, color: isActive ? 'black' : 'white', fontWeight: 500, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 } },
+            React.createElement('span', null, cat.icon || '📡'),
+            cat.name,
+            React.createElement('span', { style: { fontSize: 12, opacity: 0.7 } }, `(${cat.name === '⭐ Favorites' ? getFavorites().size : cat.count})`)
+          );
+        })
+      );
+    };
+    
+    // Top Bar
+    const TopBar = () => {
+      const current = currentChannelIdx !== -1 ? filteredChannels[currentChannelIdx] : null;
+      return React.createElement('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, padding: '20px 48px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to bottom, black, transparent)', zIndex: 15 } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6 } },
+          React.createElement('span', { style: { fontSize: 34, fontWeight: 900, color: 'white' } }, 'TV+'),
+          React.createElement('span', { style: { fontSize: 18, fontWeight: 300, color: '#aaa' } }, 'IPTV')
+        ),
+        current && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
+          React.createElement('div', { className: 'blink', style: { width: 10, height: 10, background: '#ff3b30', borderRadius: 10 } }),
+          React.createElement('span', { style: { color: '#ddd', fontSize: 14 } }, 'LIVE'),
+          React.createElement('span', { style: { color: 'white', fontWeight: 500, fontSize: 18 } }, current.name),
+          React.createElement('button', { onClick: toggleCurrentFavorite, style: { background: 'none', border: 'none', fontSize: 26, cursor: 'pointer' } }, isFavorite(current.url) ? '⭐' : '☆')
+        ),
+        React.createElement('div', { style: { fontSize: 16, color: '#aaa' } }, clock)
+      );
+    };
+    
+    // Player backdrop
+    const PlayerBackdrop = () => {
+      if (isTizen) return React.createElement('object', { id: 'avplay-tv', type: 'application/avplayer', style: { position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 0 } });
+      return React.createElement('video', { id: 'fallback-video', autoPlay: true, muted: isMuted, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', zIndex: 0 } });
+    };
+    
+    const loadingOverlay = loading && React.createElement('div', { style: { position: 'absolute', inset: 0, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20, zIndex: 20 } },
+      React.createElement('div', { className: 'spin', style: { width: 56, height: 56, border: '3px solid #333', borderTop: '3px solid white', borderRadius: '50%', animation: 'spinAnim 0.8s infinite' } }),
+      React.createElement('p', { style: { color: '#aaa' } }, loadStatus),
+      error && React.createElement('button', { onClick: () => loadPlaylist(true), style: { marginTop: 20, padding: '8px 24px', background: '#222', borderRadius: 30, color: 'white' } }, 'Retry')
+    );
+    
+    // main layout
+    return React.createElement('div', { style: { width: '100vw', height: '100vh', overflow: 'hidden', background: 'black', position: 'relative' } },
+      PlayerBackdrop(),
+      TopBar(),
+      !loading && React.createElement('div', { style: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10, paddingBottom: 40, background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)' } },
+        CategoriesRow(),
+        ChannelStrip(),
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'center', gap: 24, marginTop: 20, fontSize: 12, color: '#444' } },
+          ['🟥 RED : ★ Fav', '🟩 GREEN : Search', '🟨 YELLOW : Refresh', '🟦 BLUE : Source', '▲/▼ Cats/Ch', '◀ ▶ Navigate'].map(h => React.createElement('span', { key: h }, h))
+        )
+      ),
+      loadingOverlay,
+      VolumeOSD(),
+      FavToast(),
+      SearchModal(),
+      SettingsPanel(),
+      React.createElement('style', null, `@keyframes spinAnim { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } .spin { animation: spinAnim 0.8s linear infinite; }`)
+    );
+  };
+  
+  const rootElement = document.getElementById('root');
+  const root = createRoot(rootElement);
+  root.render(React.createElement(App));
+}
+</script>
 </body>
 </html>
