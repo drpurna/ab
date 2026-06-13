@@ -3,22 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>TV+ · Telugu IPTV (Favorites & JIO)</title>
-  <meta name="description" content="IPTV for Samsung Smart TV with favorites, last channel memory, JIO playlist">
+  <title>Telugu IPTV · Favorites & JIO</title>
+  <meta name="description" content="Telugu IPTV for Samsung Smart TV with favorites, last channel memory, JIO playlist">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23111111'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-weight='bold'%3ETV%2B%3C/text%3E%3C/svg%3E">
-  <!-- Tizen TV WebAPIs (required for AVPlay) -->
   <script type="text/javascript" src="$WEBAPIS/webapis/webapis.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
-    html, body, #root { width: 100%; height: 100%; overflow: hidden; background: black; font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-    ::-webkit-scrollbar { display: none; }
-    @keyframes blink { 0%,100%{ opacity:1; } 50%{ opacity:0.2; } }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    * { user-select: none; box-sizing: border-box; }
+    @keyframes blink { 0%,100%{ opacity:1 } 50%{ opacity:0.12 } }
+    @keyframes spinAnim { 0%{ transform:rotate(0) } 100%{ transform:rotate(360deg) } }
+    .blink { animation: blink 1.6s ease-in-out infinite; }
+    .spin { animation: spinAnim 0.85s linear infinite; }
+    .fade-in { animation: fadeIn 0.22s ease both; }
     @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
-    @keyframes slideUp { from { opacity:0; transform:translateY(18px); } to { opacity:1; transform:translateY(0); } }
-    .blink { animation: blink 1.4s infinite; }
-    .fade-in { animation: fadeIn 0.2s ease; }
-    .slide-up { animation: slideUp 0.25s cubic-bezier(0.2, 0.9, 0.4, 1.1); }
-    .fav-star { filter: drop-shadow(0 0 2px rgba(255,215,0,0.6)); }
+    ::-webkit-scrollbar { display: none; }
   </style>
 </head>
 <body>
@@ -26,103 +24,77 @@
 
 <script>
 (function(){
-  // ---- REACT & REACT-DOM (simplified production build - but we'll implement full app with native JS + functional components using Preact? 
-  // To keep everything solid, we write a lightweight custom component system? No, better to use React from CDN? 
-  // The original used React. We will embed React, ReactDOM, and build the app declaratively.
-  // For reliability on Tizen, we load React from CDN + our app logic.
-  const script = document.createElement('script');
-  script.src = 'https://unpkg.com/react@18.2.0/umd/react.development.js';
-  const script2 = document.createElement('script');
-  script2.src = 'https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js';
-  script.onload = () => {
-    script2.onload = () => {
-      // After React loaded, bootstrap our application
-      initApp();
-    };
-    document.head.appendChild(script2);
-  };
-  document.head.appendChild(script);
+  const r=document.createElement("script"); r.src="https://unpkg.com/react@18.2.0/umd/react.development.js";
+  const s=document.createElement("script"); s.src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js";
+  r.onload=()=>{ s.onload=()=>initApp(); document.head.appendChild(s); };
+  document.head.appendChild(r);
 })();
 
-async function initApp() {
+async function initApp(){
   const { useState, useEffect, useRef, useCallback, useMemo } = React;
   const { createRoot } = ReactDOM;
-
-  // ---------- CONFIGURATION ----------
-  const STORAGE_CFG = 'tiptv_cfg_v2';
-  const STORAGE_FAV = 'tiptv_favorites_v2';
-  const STORAGE_LAST = 'tiptv_last_channel';
-
-  // Playlist sources: only Telugu, India + NEW JIO playlist
-  const PLAYLIST_SOURCES = [
-    { id: 'tel', label: 'తెలుగు Telugu', desc: 'Telugu language channels', icon: '🌟', url: 'https://iptv-org.github.io/iptv/languages/tel.m3u' },
-    { id: 'india', label: 'India · All', desc: 'All Indian channels', icon: '🇮🇳', url: 'https://iptv-org.github.io/iptv/countries/in.m3u' },
-    { id: 'jio', label: 'JIO Playlist', desc: 'Jio / Indian premium', icon: '📡', url: 'https://jioplaylist.joinus-apiworker.workers.dev/playlist.m3u' }
-  ];
-
-  const DEFAULT_SOURCE = 'tel';
-
-  // Helper: localStorage helpers
+  
+  // ----- STORAGE & HELPERS -----
   const storage = {
-    get(key, def = null) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; } },
-    set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch { return false; } }
+    get: (k,d=null)=>{ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):d; }catch{ return d; } },
+    set: (k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); return true; }catch{ return false; } }
   };
-
-  // ----- Favorites management (store URLs)
-  function getFavorites() { return new Set(storage.get(STORAGE_FAV, [])); }
-  function saveFavorites(set) { storage.set(STORAGE_FAV, Array.from(set)); }
-  function toggleFavorite(url) {
-    const favs = getFavorites();
-    if (favs.has(url)) favs.delete(url);
-    else favs.add(url);
-    saveFavorites(favs);
-    return favs;
-  }
-  function isFavorite(url) { return getFavorites().has(url); }
-
-  // ----- M3U parsing + worker (simple fetch + parse)
-  async function fetchPlaylist(url, onProgress) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-    try {
-      const proxies = [url, `https://corsproxy.io/?${encodeURIComponent(url)}`, `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`];
-      for (let proxy of proxies) {
-        try {
-          const res = await fetch(proxy, { signal: controller.signal, headers: { 'Accept': 'application/x-mpegurl' } });
-          if (res.ok) {
-            const text = await res.text();
-            if (text.includes('#EXTINF') || text.includes('#EXTM3U')) {
-              clearTimeout(timeout);
-              return text;
-            }
-          }
-        } catch(e) {}
-      }
-      return null;
-    } catch { return null; } finally { clearTimeout(timeout); }
-  }
-
-  function parseM3U(text) {
+  const FAV_KEY = "tiptv_fav_v3";
+  const LAST_KEY = "tiptv_last_v3";
+  const CFG_KEY = "tiptv_cfg_v3";
+  
+  const favManager = {
+    getAll: ()=> new Set(storage.get(FAV_KEY,[])),
+    add: (url)=>{ const s=favManager.getAll(); s.add(url); storage.set(FAV_KEY,Array.from(s)); },
+    remove: (url)=>{ const s=favManager.getAll(); s.delete(url); storage.set(FAV_KEY,Array.from(s)); },
+    toggle: (url)=>{ const s=favManager.getAll(); if(s.has(url)){ s.delete(url); storage.set(FAV_KEY,Array.from(s)); return false; } else { s.add(url); storage.set(FAV_KEY,Array.from(s)); return true; } },
+    has: (url)=> favManager.getAll().has(url)
+  };
+  
+  // Playlist sources: only Telugu, India, and new JIO
+  const SOURCES = [
+    { id:"tel", label:"Telugu Only", desc:"Telugu language channels", icon:"🌟", url:"https://iptv-org.github.io/iptv/languages/tel.m3u" },
+    { id:"india", label:"India — All", desc:"All Indian channels", icon:"🇮🇳", url:"https://iptv-org.github.io/iptv/countries/in.m3u" },
+    { id:"jio", label:"JIO Playlist", desc:"Jio playlist (premium)", icon:"📡", url:"https://jioplaylist.joinus-apiworker.workers.dev/playlist.m3u" }
+  ];
+  const DEFAULT_SRC = "tel";
+  
+  // M3U fetch + parse
+  const fetchPlaylistText = async (url)=>{
+    const proxies = [url, `https://corsproxy.io/?${encodeURIComponent(url)}`, `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`];
+    for(let p of proxies){
+      try{
+        const ctrl = new AbortController();
+        const timer = setTimeout(()=>ctrl.abort(),18000);
+        const res = await fetch(p, { signal:ctrl.signal, headers:{ Accept:"application/x-mpegurl" } });
+        clearTimeout(timer);
+        if(res.ok){
+          const txt = await res.text();
+          if(txt.includes("#EXTINF") || txt.includes("#EXTM3U")) return txt;
+        }
+      }catch(e){}
+    }
+    return null;
+  };
+  
+  const parseM3U = (text)=>{
     const channels = [];
     let current = null;
     const lines = text.split(/\r?\n/);
-    for (let line of lines) {
-      line = line.trim();
-      if (!line) continue;
-      if (line.startsWith('#EXTINF:')) {
-        const matchName = /tvg-name="([^"]*)"/i.exec(line);
-        const matchLogo = /tvg-logo="([^"]*)"/i.exec(line);
-        const matchGroup = /group-title="([^"]*)"/i.exec(line);
-        const lastComma = line.lastIndexOf(',');
-        const rawName = lastComma !== -1 ? line.slice(lastComma+1).trim() : 'Channel';
+    for(let line of lines){
+      line=line.trim();
+      if(!line) continue;
+      if(line.startsWith("#EXTINF:")){
+        const tvgName = /tvg-name="([^"]*)"/i.exec(line);
+        const tvgLogo = /tvg-logo="([^"]*)"/i.exec(line);
+        const group = /group-title="([^"]*)"/i.exec(line);
+        const lastComma = line.lastIndexOf(",");
+        const rawName = lastComma>=0 ? line.slice(lastComma+1).trim() : "Channel";
         current = {
-          id: '',
-          name: (matchName ? matchName[1] : rawName) || 'Unknown',
-          logo: matchLogo ? matchLogo[1] : '',
-          group: (matchGroup ? matchGroup[1] : 'General') || 'General',
-          url: ''
+          id:"", name: (tvgName?tvgName[1]:rawName) || "Unknown",
+          logo: tvgLogo?tvgLogo[1]:"", group: (group?group[1]:"General") || "General", url:""
         };
-      } else if (!line.startsWith('#') && current && (line.startsWith('http') || line.startsWith('rtmp'))) {
+      } else if(!line.startsWith("#") && current && (line.startsWith("http")||line.startsWith("rtmp"))){
         current.url = line;
         current.id = `ch_${channels.length}`;
         channels.push(current);
@@ -130,466 +102,334 @@ async function initApp() {
       }
     }
     return channels;
-  }
-
-  // ---------- MAIN APP COMPONENT ----------
+  };
+  
+  // ----- MAIN APP (preserving original UI structure) -----
   const App = () => {
-    // playlists & UI state
-    const [activeSourceId, setActiveSourceId] = useState(() => storage.get(STORAGE_CFG, {}).source || DEFAULT_SOURCE);
+    const [activeSource, setActiveSource] = useState(()=> storage.get(CFG_KEY,{}).src || DEFAULT_SRC);
     const [channels, setChannels] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadProgress, setLoadProgress] = useState(0);
-    const [loadStatus, setLoadStatus] = useState('Loading...');
+    const [loadStatus, setLoadStatus] = useState("Loading…");
     const [error, setError] = useState(null);
-    
-    // UI navigation zones: 'strip' (channels) , 'cats' (categories), 'settings', 'search', 'favPopup' (optional)
-    const [focusZone, setFocusZone] = useState('strip');
-    const [selectedCat, setSelectedCat] = useState('All');
-    const [searchQuery, setSearchQuery] = useState('');
-    const [currentChannelIdx, setCurrentChannelIdx] = useState(-1);
-    const [focusedChannelIdx, setFocusedChannelIdx] = useState(0);
+    const [selectedCat, setSelectedCat] = useState("All");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [currentIdx, setCurrentIdx] = useState(-1);
+    const [focusedIdx, setFocusedIdx] = useState(0);
     const [focusedCatIdx, setFocusedCatIdx] = useState(0);
+    const [zone, setZone] = useState("strip"); // strip / cats / settings / search
     const [showSettings, setShowSettings] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
-    const [volumePopup, setVolumePopup] = useState(false);
     const [favToast, setFavToast] = useState(null);
+    const [volumePopup, setVolumePopup] = useState(false);
+    const [clock, setClock] = useState("");
     
-    // Player state
-    const [playerState, setPlayerState] = useState('IDLE'); // IDLE, LOADING, PLAYING, PAUSED, ERROR
+    // player state
+    const [playerState, setPlayerState] = useState("IDLE");
     const [isBuffering, setIsBuffering] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
-    const [playerError, setPlayerError] = useState(null);
+    const [playerErr, setPlayerErr] = useState(null);
     const videoRef = useRef(null);
-    const isTizen = !!window.webapis?.avplay;
-    const avPlayRef = useRef(null);
+    const avplayRef = useRef(null);
+    const isTizen = !!(window.webapis && window.webapis.avplay);
     
-    // clock
-    const [clock, setClock] = useState('');
-    useEffect(() => {
-      const update = () => setClock(new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }));
+    // clock updater
+    useEffect(()=>{
+      const update = ()=> setClock(new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}));
       update();
-      const iv = setInterval(update, 30000);
-      return () => clearInterval(iv);
-    }, []);
-
-    // last channel memory
-    const lastChannelRef = useRef(null);
+      const iv = setInterval(update,30000);
+      return ()=>clearInterval(iv);
+    },[]);
     
-    // load playlist based on activeSourceId
-    const loadPlaylist = useCallback(async (force = false) => {
-      const source = PLAYLIST_SOURCES.find(s => s.id === activeSourceId);
-      if (!source) return;
-      setLoading(true);
-      setError(null);
-      setLoadProgress(0);
-      setLoadStatus(`Fetching ${source.label}...`);
-      try {
-        const raw = await fetchPlaylist(source.url);
-        if (!raw) throw new Error('Could not fetch playlist');
-        setLoadProgress(40);
-        setLoadStatus('Parsing channels...');
+    // load playlist
+    const loadPlaylist = useCallback(async (force=false)=>{
+      const src = SOURCES.find(s=>s.id===activeSource);
+      if(!src) return;
+      setLoading(true); setError(null); setLoadProgress(0); setLoadStatus(`Fetching ${src.label}...`);
+      try{
+        const raw = await fetchPlaylistText(src.url);
+        if(!raw) throw new Error("Could not fetch playlist");
+        setLoadProgress(40); setLoadStatus("Parsing channels...");
         const parsed = parseM3U(raw);
-        setChannels(parsed);
-        setLoadProgress(100);
-        setLoadStatus(`${parsed.length} channels ready`);
-        
-        // restore last channel from memory if exists and current channel not set
-        const last = storage.get(STORAGE_LAST);
-        if (last && last.sourceId === activeSourceId && !force && currentChannelIdx === -1) {
-          const idx = parsed.findIndex(ch => ch.url === last.channelUrl);
-          if (idx !== -1) {
-            setCurrentChannelIdx(idx);
-            setFocusedChannelIdx(idx);
-            // Auto-play last channel after load
-            setTimeout(() => playChannelByIndex(idx, parsed), 500);
-          } else {
-            storage.set(STORAGE_LAST, null);
-          }
+        setChannels(parsed); setLoadProgress(100); setLoadStatus(`${parsed.length} channels ready`);
+        // restore last channel
+        const last = storage.get(LAST_KEY);
+        if(last && last.srcId===activeSource && !force && currentIdx===-1){
+          const idx = parsed.findIndex(ch=>ch.url===last.url);
+          if(idx!==-1){
+            setCurrentIdx(idx); setFocusedIdx(idx);
+            setTimeout(()=> playChannelByIndex(idx, parsed), 400);
+          } else storage.set(LAST_KEY,null);
         }
-      } catch (err) {
-        setError(err.message);
-        setLoadStatus('Failed');
-      } finally {
-        setLoading(false);
-      }
-    }, [activeSourceId, currentChannelIdx]);
+      }catch(e){ setError(e.message); setLoadStatus("Failed"); }
+      finally{ setLoading(false); }
+    },[activeSource, currentIdx]);
     
-    useEffect(() => {
-      loadPlaylist();
-    }, [activeSourceId]);
+    useEffect(()=>{ loadPlaylist(); },[activeSource]);
     
     // play channel
-    const playChannelByIndex = useCallback(async (idx, chList = channels) => {
-      const channel = chList[idx];
-      if (!channel || !channel.url) return;
-      // store last channel
-      storage.set(STORAGE_LAST, { sourceId: activeSourceId, channelUrl: channel.url, channelName: channel.name });
-      lastChannelRef.current = { sourceId: activeSourceId, url: channel.url };
-      setCurrentChannelIdx(idx);
-      setFocusedChannelIdx(idx);
-      setPlayerError(null);
-      setPlayerState('LOADING');
-      setIsBuffering(true);
-      
-      if (isTizen && window.webapis?.avplay) {
-        try {
+    const playChannelByIndex = useCallback(async (idx, chList=channels)=>{
+      const ch = chList[idx];
+      if(!ch || !ch.url) return;
+      storage.set(LAST_KEY, { srcId:activeSource, url:ch.url, name:ch.name });
+      setCurrentIdx(idx); setFocusedIdx(idx); setPlayerErr(null);
+      setPlayerState("LOADING"); setIsBuffering(true);
+      if(isTizen && window.webapis.avplay){
+        try{
           const av = window.webapis.avplay;
-          avPlayRef.current = av;
-          const state = av.getState();
-          if (state !== 'NONE' && state !== 'IDLE') { av.stop(); av.close(); }
-          av.open(channel.url);
-          av.setDisplayRect(0, 0, 1920, 1080);
-          av.setDisplayMethod('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+          avplayRef.current=av;
+          const st = av.getState();
+          if(st!=="NONE" && st!=="IDLE"){ av.stop(); av.close(); }
+          av.open(ch.url);
+          av.setDisplayRect(0,0,1920,1080);
+          av.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN");
           av.setListener({
-            onbufferingstart: () => setIsBuffering(true),
-            onbufferingcomplete: () => setIsBuffering(false),
-            oncurrentplaytime: () => {},
-            onerror: (e) => { setPlayerError('Stream error'); setPlayerState('ERROR'); setIsBuffering(false); },
-            onstreamcompleted: () => setPlayerState('IDLE')
+            onbufferingstart:()=>setIsBuffering(true),
+            onbufferingcomplete:()=>setIsBuffering(false),
+            onerror:(e)=>{ setPlayerErr("Stream error"); setPlayerState("ERROR"); setIsBuffering(false); },
+            onstreamcompleted:()=>setPlayerState("IDLE")
           });
-          av.prepare();
-          av.play();
-          setPlayerState('PLAYING');
-          setIsBuffering(false);
-        } catch(e) { setPlayerError(e.message); setPlayerState('ERROR'); setIsBuffering(false); }
+          av.prepare(); av.play();
+          setPlayerState("PLAYING"); setIsBuffering(false);
+        }catch(e){ setPlayerErr(e.message); setPlayerState("ERROR"); setIsBuffering(false); }
       } else {
-        // fallback video element
-        const video = document.getElementById('fallback-video');
-        if (video) {
-          video.src = channel.url;
-          video.load();
-          video.oncanplay = () => { setPlayerState('PLAYING'); setIsBuffering(false); };
-          video.onwaiting = () => setIsBuffering(true);
-          video.onplaying = () => { setPlayerState('PLAYING'); setIsBuffering(false); };
-          video.onerror = () => { setPlayerError('Cannot play'); setPlayerState('ERROR'); };
-          video.muted = isMuted;
-          video.play().catch(() => setPlayerState('ERROR'));
+        const video = document.getElementById("fallback-video");
+        if(video){
+          video.src=ch.url; video.load();
+          video.oncanplay=()=>{ setPlayerState("PLAYING"); setIsBuffering(false); };
+          video.onwaiting=()=>setIsBuffering(true);
+          video.onerror=()=>{ setPlayerErr("Cannot play"); setPlayerState("ERROR"); };
+          video.muted=isMuted;
+          video.play().catch(()=>setPlayerState("ERROR"));
         }
       }
-    }, [activeSourceId, channels, isTizen, isMuted]);
+    },[activeSource, channels, isTizen, isMuted]);
     
     // toggle favorite for current channel
-    const toggleCurrentFavorite = useCallback(() => {
-      if (currentChannelIdx === -1 || !channels[currentChannelIdx]) return;
-      const ch = channels[currentChannelIdx];
-      const url = ch.url;
-      const newFavs = toggleFavorite(url);
-      const isNowFav = newFavs.has(url);
-      setFavToast(isNowFav ? `❤️ Added: ${ch.name}` : `♡ Removed: ${ch.name}`);
-      setTimeout(() => setFavToast(null), 1800);
-      // force re-render categories & update UI (trigger state)
-      setChannels(prev => [...prev]); // trick to refresh
-    }, [currentChannelIdx, channels]);
+    const toggleFav = useCallback(()=>{
+      if(currentIdx===-1 || !channels[currentIdx]) return;
+      const ch = channels[currentIdx];
+      const nowFav = favManager.toggle(ch.url);
+      setFavToast(nowFav ? `❤️ Added: ${ch.name}` : `♡ Removed: ${ch.name}`);
+      setTimeout(()=>setFavToast(null), 1600);
+      setChannels(prev=>[...prev]); // force re-render
+    },[currentIdx, channels]);
     
-    // categories: All + groups + Favorites (⭐)
-    const allCategories = useMemo(() => {
+    // categories + favorites category
+    const categories = useMemo(()=>{
       const groups = new Map();
-      groups.set('All', { name: 'All', icon: '📺', count: channels.length });
-      for (let ch of channels) {
-        const grp = ch.group || 'General';
-        if (!groups.has(grp)) groups.set(grp, { name: grp, icon: getGroupIcon(grp), count: 0 });
-        groups.get(grp).count++;
+      groups.set("All", { name:"All", icon:"📺", count:channels.length });
+      for(let ch of channels){
+        const g = ch.group || "General";
+        if(!groups.has(g)) groups.set(g, { name:g, icon: getGroupIcon(g), count:0 });
+        groups.get(g).count++;
       }
-      const cats = Array.from(groups.values());
-      // add Favorites special category at top
-      return [{ name: '⭐ Favorites', icon: '⭐', count: 0, isFavCat: true }, ...cats];
-    }, [channels]);
+      const regular = Array.from(groups.values());
+      return [{ name:"⭐ Favorites", icon:"⭐", count:favManager.getAll().size, isFav:true }, ...regular];
+    },[channels]);
     
-    // filtered channels based on selected category + search + favorites logic
-    const filteredChannels = useMemo(() => {
-      let result = [...channels];
-      if (selectedCat === '⭐ Favorites') {
-        const favSet = getFavorites();
-        result = result.filter(ch => favSet.has(ch.url));
-      } else if (selectedCat !== 'All') {
-        result = result.filter(ch => (ch.group || 'General') === selectedCat);
-      }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        result = result.filter(ch => ch.name.toLowerCase().includes(q));
-      }
-      return result;
-    }, [channels, selectedCat, searchQuery]);
-    
-    // update focused index when filtered list changes
-    useEffect(() => {
-      if (focusedChannelIdx >= filteredChannels.length) setFocusedChannelIdx(Math.max(0, filteredChannels.length-1));
-    }, [filteredChannels]);
-    
-    // helper icons
-    function getGroupIcon(g) {
-      const gL = g.toLowerCase();
-      if (gL.includes('news')) return '📰';
-      if (gL.includes('movie')) return '🎬';
-      if (gL.includes('sport')) return '🏏';
-      if (gL.includes('music')) return '🎵';
-      if (gL.includes('devot')) return '🙏';
-      return '📡';
+    function getGroupIcon(g){
+      const l=g.toLowerCase();
+      if(l.includes("news")) return "📰";
+      if(l.includes("sport")) return "🏏";
+      if(l.includes("music")) return "🎵";
+      if(l.includes("movie")) return "🎬";
+      return "📡";
     }
     
-    // volume OSD auto hide
-    let volTimer;
-    const showVolumeOSD = () => { setVolumePopup(true); clearTimeout(volTimer); volTimer = setTimeout(() => setVolumePopup(false), 1500); };
+    const filteredChannels = useMemo(()=>{
+      let arr = [...channels];
+      if(selectedCat === "⭐ Favorites"){
+        const favSet = favManager.getAll();
+        arr = arr.filter(ch=>favSet.has(ch.url));
+      } else if(selectedCat !== "All"){
+        arr = arr.filter(ch=>(ch.group||"General")===selectedCat);
+      }
+      if(searchQuery.trim()){
+        const q = searchQuery.toLowerCase();
+        arr = arr.filter(ch=>ch.name.toLowerCase().includes(q));
+      }
+      return arr;
+    },[channels, selectedCat, searchQuery]);
     
-    // remote control handler (Samsung keys)
-    useEffect(() => {
-      const handleKey = (e) => {
+    // remote control (preserving original key map)
+    useEffect(()=>{
+      const handler = (e)=>{
         const key = e.keyCode;
-        // prevent default for media keys
-        const preventKeys = [38,40,37,39,13,10009,10182,415,19,10252,413,417,412,403,404,405,406,458,10135,457,427,428,447,448,449];
-        if (preventKeys.includes(key)) e.preventDefault();
-        
-        // navigation between zones
-        if (showSettings) return; // settings panel has own handler but we close on BACK
-        if (showSearch) {
-          if (key === 10009 || key === 27) { setShowSearch(false); setFocusZone('strip'); setSearchQuery(''); }
+        const prevent = [38,40,37,39,13,10009,403,404,405,406,447,448,449,427,428];
+        if(prevent.includes(key)) e.preventDefault();
+        if(showSettings){
+          if(key===10009) setShowSettings(false);
           return;
         }
-        
-        switch(key) {
-          case 38: // UP
-            if (focusZone === 'strip') setFocusZone('cats');
-            else if (focusZone === 'cats') setFocusZone('strip');
-            break;
-          case 40: // DOWN
-            if (focusZone === 'cats') setFocusZone('strip');
-            else if (focusZone === 'strip') setFocusZone('cats');
-            break;
-          case 37: // LEFT
-            if (focusZone === 'strip') setFocusedChannelIdx(prev => Math.max(0, prev-1));
-            if (focusZone === 'cats') setFocusedCatIdx(prev => Math.max(0, prev-1));
-            break;
-          case 39: // RIGHT
-            if (focusZone === 'strip') setFocusedChannelIdx(prev => Math.min(filteredChannels.length-1, prev+1));
-            if (focusZone === 'cats') setFocusedCatIdx(prev => Math.min(allCategories.length-1, prev+1));
-            break;
-          case 13: // OK / ENTER
-            if (focusZone === 'strip' && filteredChannels[focusedChannelIdx]) {
-              playChannelByIndex(focusedChannelIdx, filteredChannels);
-            }
-            if (focusZone === 'cats') {
-              const cat = allCategories[focusedCatIdx];
-              if (cat) {
-                setSelectedCat(cat.name);
-                setFocusZone('strip');
-                setFocusedChannelIdx(0);
-              }
-            }
-            break;
-          case 10009: // BACK
-            if (focusZone !== 'strip') { setFocusZone('strip'); }
-            else if (showSearch) setShowSearch(false);
-            break;
-          case 403: // RED - toggle overlay (favorites toast)
-            toggleCurrentFavorite();
-            break;
-          case 404: // GREEN - search
-            setShowSearch(true);
-            setFocusZone('search');
-            break;
-          case 405: // YELLOW - refresh playlist (force)
-            loadPlaylist(true);
-            break;
-          case 406: // BLUE - settings panel
-            setShowSettings(true);
-            break;
-          case 447: // VOLUME UP
-            if (isTizen && window.webapis?.tvaudiocontrol) {
-              let vol = window.webapis.tvaudiocontrol.getVolume();
-              vol = Math.min(100, vol + 5);
-              window.webapis.tvaudiocontrol.setVolume(vol);
-            } else {
-              const video = document.getElementById('fallback-video');
-              if (video) video.volume = Math.min(1, (video.volume || 0.5) + 0.05);
-            }
-            showVolumeOSD();
-            break;
-          case 448: // VOLUME DOWN
-            if (isTizen && window.webapis?.tvaudiocontrol) {
-              let vol = window.webapis.tvaudiocontrol.getVolume();
-              vol = Math.max(0, vol - 5);
-              window.webapis.tvaudiocontrol.setVolume(vol);
-            } else {
-              const video = document.getElementById('fallback-video');
-              if (video) video.volume = Math.max(0, (video.volume || 0.5) - 0.05);
-            }
-            showVolumeOSD();
-            break;
-          case 449: // MUTE
-            if (isTizen && window.webapis?.tvaudiocontrol) {
-              const muted = !window.webapis.tvaudiocontrol.isMute();
-              window.webapis.tvaudiocontrol.setMute(muted);
-              setIsMuted(muted);
-            } else {
-              const video = document.getElementById('fallback-video');
-              if (video) video.muted = !video.muted;
-              setIsMuted(v => !v);
-            }
-            showVolumeOSD();
-            break;
-          case 427: case 428: // CH up/down
-            if (focusZone === 'strip') {
-              let newIdx = key === 427 ? focusedChannelIdx+1 : focusedChannelIdx-1;
-              if (newIdx >=0 && newIdx < filteredChannels.length) {
-                setFocusedChannelIdx(newIdx);
-                playChannelByIndex(newIdx, filteredChannels);
-              }
-            }
-            break;
-          default: break;
+        if(showSearch){
+          if(key===10009 || key===27){ setShowSearch(false); setZone("strip"); setSearchQuery(""); }
+          return;
+        }
+        switch(key){
+          case 38: setZone(zone==="strip"?"cats":"strip"); break;
+          case 40: setZone(zone==="cats"?"strip":"strip"); break;
+          case 37: if(zone==="strip") setFocusedIdx(p=>Math.max(0,p-1));
+                    else if(zone==="cats") setFocusedCatIdx(p=>Math.max(0,p-1)); break;
+          case 39: if(zone==="strip") setFocusedIdx(p=>Math.min(filteredChannels.length-1,p+1));
+                    else if(zone==="cats") setFocusedCatIdx(p=>Math.min(categories.length-1,p+1)); break;
+          case 13: if(zone==="strip" && filteredChannels[focusedIdx]) playChannelByIndex(focusedIdx, filteredChannels);
+                    else if(zone==="cats"){ const cat=categories[focusedCatIdx]; if(cat){ setSelectedCat(cat.name); setZone("strip"); setFocusedIdx(0); } }
+                    break;
+          case 10009: if(zone!=="strip") setZone("strip"); break;
+          case 403: toggleFav(); break;
+          case 404: setShowSearch(true); setZone("search"); break;
+          case 405: loadPlaylist(true); break;
+          case 406: setShowSettings(true); break;
+          case 447: // vol up
+            if(isTizen && window.webapis.tvaudiocontrol){
+              let v=window.webapis.tvaudiocontrol.getVolume(); v=Math.min(100,v+5); window.webapis.tvaudiocontrol.setVolume(v);
+            }else{ const vid=document.getElementById("fallback-video"); if(vid) vid.volume=Math.min(1,vid.volume+0.05); }
+            setVolumePopup(true); setTimeout(()=>setVolumePopup(false),1500); break;
+          case 448: // vol down
+            if(isTizen && window.webapis.tvaudiocontrol){
+              let v=window.webapis.tvaudiocontrol.getVolume(); v=Math.max(0,v-5); window.webapis.tvaudiocontrol.setVolume(v);
+            }else{ const vid=document.getElementById("fallback-video"); if(vid) vid.volume=Math.max(0,vid.volume-0.05); }
+            setVolumePopup(true); setTimeout(()=>setVolumePopup(false),1500); break;
+          case 449: // mute
+            if(isTizen && window.webapis.tvaudiocontrol){
+              const m=!window.webapis.tvaudiocontrol.isMute(); window.webapis.tvaudiocontrol.setMute(m); setIsMuted(m);
+            }else{ const vid=document.getElementById("fallback-video"); if(vid){ vid.muted=!vid.muted; setIsMuted(vid.muted); } }
+            setVolumePopup(true); setTimeout(()=>setVolumePopup(false),1500); break;
+          case 427: if(zone==="strip"){ let ni=focusedIdx+1; if(ni<filteredChannels.length){ setFocusedIdx(ni); playChannelByIndex(ni,filteredChannels); } } break;
+          case 428: if(zone==="strip"){ let ni=focusedIdx-1; if(ni>=0){ setFocusedIdx(ni); playChannelByIndex(ni,filteredChannels); } } break;
         }
       };
-      window.addEventListener('keydown', handleKey);
-      return () => window.removeEventListener('keydown', handleKey);
-    }, [focusZone, filteredChannels, focusedChannelIdx, focusedCatIdx, allCategories, showSettings, showSearch, loadPlaylist, toggleCurrentFavorite, playChannelByIndex, isTizen]);
+      window.addEventListener("keydown",handler);
+      return ()=>window.removeEventListener("keydown",handler);
+    },[zone, focusedIdx, focusedCatIdx, categories, filteredChannels, showSettings, showSearch, toggleFav, loadPlaylist, playChannelByIndex, isTizen]);
     
-    // Volume OSD component
-    const VolumeOSD = () => {
-      const vol = (() => {
-        if (isTizen && window.webapis?.tvaudiocontrol) return window.webapis.tvaudiocontrol.getVolume();
-        const vid = document.getElementById('fallback-video');
-        return vid ? Math.round(vid.volume * 100) : 50;
-      })();
-      if (!volumePopup) return null;
-      return React.createElement('div', { style: volumeOSDStyle }, 
-        React.createElement('div', { style: { background: '#111', padding: '12px 24px', borderRadius: 40, display:'flex', alignItems:'center', gap:16 } },
-          React.createElement('span', { style: { fontSize: 22 } }, isMuted ? '🔇' : '🔊'),
-          React.createElement('div', { style: { width: 200, height: 6, background: '#333', borderRadius: 4 } },
-            React.createElement('div', { style: { width: `${isMuted ? 0 : vol}%`, height: 6, background: 'white', borderRadius: 4 } })),
-          React.createElement('span', { style: { fontSize: 18, minWidth: 40 } }, isMuted ? 'MUTE' : `${vol}%`)
-        )
-      );
-    };
-    const volumeOSDStyle = { position: 'absolute', bottom: 200, left: '50%', transform: 'translateX(-50%)', zIndex: 200, background: 'rgba(0,0,0,0.7)', borderRadius: 60, backdropFilter: 'blur(8px)', padding: 8 };
-    
-    // Favorite Toast
-    const FavToast = () => favToast ? React.createElement('div', { style: { position: 'absolute', bottom: 280, left: '50%', transform: 'translateX(-50%)', background: '#1f1f1f', color: '#ffd966', padding: '10px 24px', borderRadius: 40, fontSize: 16, fontWeight: 500, zIndex: 201, pointerEvents: 'none', boxShadow: '0 4px 12px black' } }, favToast) : null;
-    
-    // Settings panel (simplified)
-    const SettingsPanel = () => {
-      if (!showSettings) return null;
-      const sources = PLAYLIST_SOURCES;
-      return React.createElement('div', { style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-        React.createElement('div', { style: { background: '#0c0c0c', width: 560, borderRadius: 32, padding: 28, border: '1px solid #2a2a2a' } },
-          React.createElement('h2', { style: { color: 'white', fontSize: 28, marginBottom: 20 } }, 'Settings'),
-          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-            React.createElement('p', { style: { color: '#aaa' } }, 'Playlist Source'),
-            sources.map(src => React.createElement('button', { key: src.id, onClick: () => { setActiveSourceId(src.id); storage.set(STORAGE_CFG, { source: src.id }); setShowSettings(false); }, style: { background: activeSourceId === src.id ? '#2c2c2c' : '#1a1a1a', border: '1px solid #3a3a3a', padding: 12, borderRadius: 20, color: 'white', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' } },
-              React.createElement('span', null, `${src.icon} ${src.label}`),
-              activeSourceId === src.id && React.createElement('span', null, '✓')
-            )),
-            React.createElement('button', { onClick: () => { setShowSettings(false); }, style: { marginTop: 20, background: '#2a2a2a', border: 'none', padding: 12, borderRadius: 30, color: 'white' } }, 'Close (BACK)')
-          )
-        )
+    // UI Components (preserve original styling)
+    const TopBar = () => {
+      const curr = currentIdx!==-1 ? filteredChannels[currentIdx] : null;
+      return React.createElement("div",{ style:{ position:"absolute", top:0, left:0, right:0, padding:"20px 48px", display:"flex", justifyContent:"space-between", alignItems:"center", background:"linear-gradient(to bottom, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0) 100%)", zIndex:15 } },
+        React.createElement("div",{ style:{ display:"flex", alignItems:"center", gap:0 } },
+          React.createElement("span",{ style:{ color:"#fff", fontWeight:900, fontSize:34, letterSpacing:"-0.05em" } },"TV"),
+          React.createElement("span",{ style:{ color:"rgba(255,255,255,0.85)", fontWeight:300, fontSize:36, marginTop:-2 } },"+")),
+        curr && React.createElement("div",{ style:{ display:"flex", alignItems:"center", gap:12, background:"rgba(0,0,0,0.6)", borderRadius:40, padding:"6px 20px" } },
+          React.createElement("div",{ className:"blink", style:{ width:8, height:8, background:"#FF3B30", borderRadius:"50%" } }),
+          React.createElement("span",{ style:{ color:"rgba(255,255,255,0.42)", fontSize:11, fontWeight:700 } },"LIVE"),
+          curr.logo && React.createElement("img",{ src:curr.logo, style:{ width:32, height:32, objectFit:"contain", borderRadius:6 }, onError:e=>e.target.style.display="none" }),
+          React.createElement("span",{ style:{ color:"#fff", fontSize:18, fontWeight:600 } },curr.name),
+          React.createElement("button",{ onClick:toggleFav, style:{ background:"none", border:"none", fontSize:22, cursor:"pointer", marginLeft:8 } }, favManager.has(curr.url)?"⭐":"☆")),
+        React.createElement("div",{ style:{ color:"rgba(255,255,255,0.4)", fontSize:17, fontWeight:500, fontVariantNumeric:"tabular-nums" } },clock)
       );
     };
     
-    // Search modal
-    const SearchModal = () => {
-      if (!showSearch) return null;
-      return React.createElement('div', { style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 250, display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-        React.createElement('div', { style: { background: '#0f0f0f', width: 680, borderRadius: 48, padding: 28 } },
-          React.createElement('input', { autoFocus: true, type: 'text', placeholder: 'Search channels...', value: searchQuery, onChange: e => setSearchQuery(e.target.value), style: { width: '100%', background: '#1c1c1c', border: '1px solid #333', padding: 20, fontSize: 22, borderRadius: 60, color: 'white', outline: 'none' } }),
-          React.createElement('p', { style: { marginTop: 16, color: '#aaa', textAlign: 'center' } }, `${filteredChannels.length} results · 🟢 press BACK to close`)
-        )
+    const CategoriesRow = () => {
+      return React.createElement("div",{ style:{ display:"flex", gap:12, overflowX:"auto", padding:"0 80px", marginBottom:10, scrollBehavior:"smooth" } },
+        categories.map((cat,idx)=>{
+          const active = selectedCat===cat.name;
+          const focused = zone==="cats" && focusedCatIdx===idx;
+          return React.createElement("button",{ key:cat.name, onClick:()=>{ setSelectedCat(cat.name); setZone("strip"); setFocusedIdx(0); }, style:{ flexShrink:0, padding:"10px 24px", borderRadius:40, background:active?"white":focused?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.06)", border:`1px solid ${focused?"#ddd":"transparent"}`, color:active?"black":"white", fontWeight:500, fontSize:16, display:"flex", alignItems:"center", gap:8 } },
+            React.createElement("span",null,cat.icon), cat.name, React.createElement("span",{ style:{ fontSize:12, opacity:0.7 } },`(${cat.name==="⭐ Favorites"?favManager.getAll().size:cat.count})`))
+        })
       );
     };
     
-    // Channel Strip (horizontal row)
     const ChannelStrip = () => {
-      if (filteredChannels.length === 0) return React.createElement('div', { style: { textAlign: 'center', color: '#666', marginTop: 100 } }, 'No channels');
-      const itemWidth = 280;
-      const gap = 28;
-      const translate = (focusedChannelIdx * (itemWidth + gap)) - (960 - itemWidth/2);
-      return React.createElement('div', { style: { position: 'relative', height: 380, overflow: 'hidden', marginTop: 20 } },
-        React.createElement('div', { style: { display: 'flex', gap: gap, transform: `translateX(-${Math.max(0, translate)}px)`, transition: 'transform 0.25s ease', paddingLeft: 100, paddingRight: 100 } },
-          filteredChannels.map((ch, idx) => {
-            const isActive = idx === currentChannelIdx;
-            const isFocused = idx === focusedChannelIdx;
-            const fav = isFavorite(ch.url);
-            return React.createElement('button', { key: ch.id || idx, onClick: () => playChannelByIndex(idx, filteredChannels), style: { flex: '0 0 auto', width: itemWidth, background: isActive ? 'rgba(255,255,255,0.15)' : (isFocused ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)'), borderRadius: 28, border: `2px solid ${isFocused ? '#aaa' : 'transparent'}`, padding: '18px 12px', cursor: 'pointer', transition: 'all 0.1s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 } },
-              React.createElement('div', { style: { position: 'relative' } },
-                React.createElement('img', { src: ch.logo || '', onError: e => e.target.style.display='none', style: { width: 110, height: 110, objectFit: 'contain', borderRadius: 20, background: '#111' } }),
-                fav && React.createElement('span', { style: { position: 'absolute', top: -6, right: -6, fontSize: 26 } }, '⭐')
-              ),
-              React.createElement('div', { style: { textAlign: 'center' } },
-                React.createElement('p', { style: { color: 'white', fontWeight: isActive ? 800 : 500, fontSize: 18 } }, ch.name),
-                React.createElement('p', { style: { color: '#aaa', fontSize: 12 } }, ch.group || 'General')
-              ),
-              isActive && React.createElement('div', { className: 'blink', style: { width: 8, height: 8, background: '#ff3b30', borderRadius: 10, marginTop: 4 } })
+      if(filteredChannels.length===0) return React.createElement("div",{ style:{ textAlign:"center", color:"#666", marginTop:100 } },"No channels");
+      const cardW = 252, gap = 28;
+      const offset = (focusedIdx * (cardW+gap)) - (960 - cardW/2);
+      return React.createElement("div",{ style:{ position:"relative", height:360, overflow:"hidden", marginTop:20 } },
+        React.createElement("div",{ style:{ display:"flex", gap:gap, transform:`translateX(-${Math.max(0,offset)}px)`, transition:"transform 0.25s ease", paddingLeft:100, paddingRight:100 } },
+          filteredChannels.map((ch,idx)=>{
+            const isActive = idx===currentIdx;
+            const isFocused = idx===focusedIdx;
+            const isFav = favManager.has(ch.url);
+            return React.createElement("button",{ key:ch.id||idx, onClick:()=>playChannelByIndex(idx,filteredChannels), style:{ flex:"0 0 auto", width:cardW, background:isActive?"rgba(255,255,255,0.16)":isFocused?"rgba(255,255,255,0.10)":"rgba(255,255,255,0.04)", borderRadius:18, border:`1.5px solid ${isActive?"rgba(255,255,255,0.38)":isFocused?"rgba(255,255,255,0.2)":"rgba(255,255,255,0.07)"}`, padding:"18px 12px", cursor:"pointer", transition:"all 0.1s", display:"flex", flexDirection:"column", alignItems:"center", gap:12 } },
+              React.createElement("div",{ style:{ position:"relative" } },
+                React.createElement("img",{ src:ch.logo||"", onError:e=>e.target.style.display="none", style:{ width:100, height:100, objectFit:"contain", borderRadius:16, background:"#111" } }),
+                isFav && React.createElement("span",{ style:{ position:"absolute", top:-8, right:-8, fontSize:24 } },"⭐")),
+              React.createElement("div",{ style:{ textAlign:"center" } },
+                React.createElement("p",{ style:{ color:isActive?"#fff":"rgba(255,255,255,0.72)", fontWeight:isActive?700:500, fontSize:17, lineHeight:1.3 } },ch.name),
+                React.createElement("p",{ style:{ color:"rgba(255,255,255,0.22)", fontSize:13, marginTop:4 } },ch.group||"General")),
+              isActive && React.createElement("div",{ className:"blink", style:{ width:8, height:8, background:"#ff3b30", borderRadius:10, marginTop:4 } })
             );
           })
         )
       );
     };
     
-    // Categories row
-    const CategoriesRow = () => {
-      return React.createElement('div', { style: { display: 'flex', gap: 12, overflowX: 'auto', padding: '0 80px', marginBottom: 10, scrollBehavior: 'smooth' } },
-        allCategories.map((cat, idx) => {
-          const isActive = selectedCat === cat.name;
-          const isFocused = focusZone === 'cats' && focusedCatIdx === idx;
-          return React.createElement('button', { key: cat.name, onClick: () => { setSelectedCat(cat.name); setFocusZone('strip'); }, style: { flexShrink: 0, padding: '10px 24px', borderRadius: 40, background: isActive ? 'white' : (isFocused ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)'), border: `1px solid ${isFocused ? '#ddd' : 'transparent'}`, color: isActive ? 'black' : 'white', fontWeight: 500, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 } },
-            React.createElement('span', null, cat.icon || '📡'),
-            cat.name,
-            React.createElement('span', { style: { fontSize: 12, opacity: 0.7 } }, `(${cat.name === '⭐ Favorites' ? getFavorites().size : cat.count})`)
-          );
-        })
-      );
-    };
-    
-    // Top Bar
-    const TopBar = () => {
-      const current = currentChannelIdx !== -1 ? filteredChannels[currentChannelIdx] : null;
-      return React.createElement('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, padding: '20px 48px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to bottom, black, transparent)', zIndex: 15 } },
-        React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6 } },
-          React.createElement('span', { style: { fontSize: 34, fontWeight: 900, color: 'white' } }, 'TV+'),
-          React.createElement('span', { style: { fontSize: 18, fontWeight: 300, color: '#aaa' } }, 'IPTV')
-        ),
-        current && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16 } },
-          React.createElement('div', { className: 'blink', style: { width: 10, height: 10, background: '#ff3b30', borderRadius: 10 } }),
-          React.createElement('span', { style: { color: '#ddd', fontSize: 14 } }, 'LIVE'),
-          React.createElement('span', { style: { color: 'white', fontWeight: 500, fontSize: 18 } }, current.name),
-          React.createElement('button', { onClick: toggleCurrentFavorite, style: { background: 'none', border: 'none', fontSize: 26, cursor: 'pointer' } }, isFavorite(current.url) ? '⭐' : '☆')
-        ),
-        React.createElement('div', { style: { fontSize: 16, color: '#aaa' } }, clock)
-      );
-    };
-    
-    // Player backdrop
-    const PlayerBackdrop = () => {
-      if (isTizen) return React.createElement('object', { id: 'avplay-tv', type: 'application/avplayer', style: { position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 0 } });
-      return React.createElement('video', { id: 'fallback-video', autoPlay: true, muted: isMuted, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', zIndex: 0 } });
-    };
-    
-    const loadingOverlay = loading && React.createElement('div', { style: { position: 'absolute', inset: 0, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 20, zIndex: 20 } },
-      React.createElement('div', { className: 'spin', style: { width: 56, height: 56, border: '3px solid #333', borderTop: '3px solid white', borderRadius: '50%', animation: 'spinAnim 0.8s infinite' } }),
-      React.createElement('p', { style: { color: '#aaa' } }, loadStatus),
-      error && React.createElement('button', { onClick: () => loadPlaylist(true), style: { marginTop: 20, padding: '8px 24px', background: '#222', borderRadius: 30, color: 'white' } }, 'Retry')
+    const KeyHints = () => React.createElement("div",{ style:{ height:52, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", gap:28, background:"linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 100%)" } },
+      [["🟥 RED","★ Fav"],["🟩 GRN","Search"],["🟨 YLW","Refresh"],["🟦 BLU","Source"],["▲/▼","Cats/Ch"],["◀ ▶","Browse"]].map(([k,t])=>React.createElement("div",{ style:{ display:"flex", alignItems:"center", gap:7 } },
+        React.createElement("kbd",{ style:{ color:"rgba(255,255,255,0.82)", fontSize:12, fontWeight:700, background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.14)", borderRadius:6, padding:"3px 9px" } },k),
+        React.createElement("span",{ style:{ color:"rgba(255,255,255,0.28)", fontSize:12 } },t)
+      ))
     );
     
-    // main layout
-    return React.createElement('div', { style: { width: '100vw', height: '100vh', overflow: 'hidden', background: 'black', position: 'relative' } },
-      PlayerBackdrop(),
+    const VolumeOSD = () => {
+      if(!volumePopup) return null;
+      let vol = 50;
+      if(isTizen && window.webapis.tvaudiocontrol) vol = window.webapis.tvaudiocontrol.getVolume();
+      else { const v=document.getElementById("fallback-video"); if(v) vol=Math.round(v.volume*100); }
+      return React.createElement("div",{ style:{ position:"absolute", bottom:280, left:"50%", transform:"translateX(-50%)", zIndex:200, background:"rgba(0,0,0,0.7)", borderRadius:40, backdropFilter:"blur(8px)", padding:"8px 20px", display:"flex", alignItems:"center", gap:12 } },
+        React.createElement("span",{ style:{ fontSize:20 } }, isMuted?"🔇":"🔊"),
+        React.createElement("div",{ style:{ width:180, height:6, background:"#333", borderRadius:4 } }, React.createElement("div",{ style:{ width:isMuted?0:`${vol}%`, height:6, background:"white", borderRadius:4 } })),
+        React.createElement("span",{ style:{ fontSize:16, minWidth:40 } }, isMuted?"MUTE":`${vol}%`)
+      );
+    };
+    
+    const FavToastMsg = () => favToast? React.createElement("div",{ style:{ position:"absolute", bottom:360, left:"50%", transform:"translateX(-50%)", background:"#1f1f1f", color:"#ffd966", padding:"10px 24px", borderRadius:40, fontSize:16, zIndex:201, pointerEvents:"none" } }, favToast) : null;
+    
+    const SettingsPanel = () => {
+      if(!showSettings) return null;
+      return React.createElement("div",{ style:{ position:"fixed", inset:0, background:"rgba(0,0,0,0.8)", backdropFilter:"blur(10px)", zIndex:300, display:"flex", alignItems:"center", justifyContent:"center" } },
+        React.createElement("div",{ style:{ background:"#0c0c0c", width:560, borderRadius:32, padding:28, border:"1px solid #2a2a2a" } },
+          React.createElement("h2",{ style:{ color:"white", fontSize:28, marginBottom:20 } },"Settings"),
+          React.createElement("div",{ style:{ display:"flex", flexDirection:"column", gap:16 } },
+            React.createElement("p",{ style:{ color:"#aaa" } },"Playlist Source"),
+            SOURCES.map(s=>React.createElement("button",{ key:s.id, onClick:()=>{ setActiveSource(s.id); storage.set(CFG_KEY,{ src:s.id }); setShowSettings(false); }, style:{ background:activeSource===s.id?"#2c2c2c":"#1a1a1a", border:"1px solid #3a3a3a", padding:12, borderRadius:20, color:"white", display:"flex", justifyContent:"space-between", cursor:"pointer" } },
+              React.createElement("span",null,s.icon," ",s.label), activeSource===s.id&&React.createElement("span",null,"✓")
+            )),
+            React.createElement("button",{ onClick:()=>setShowSettings(false), style:{ marginTop:20, background:"#2a2a2a", border:"none", padding:12, borderRadius:30, color:"white" } },"Close (BACK)")
+          )
+        )
+      );
+    };
+    
+    const SearchModal = () => {
+      if(!showSearch) return null;
+      return React.createElement("div",{ style:{ position:"fixed", inset:0, background:"rgba(0,0,0,0.75)", backdropFilter:"blur(8px)", zIndex:250, display:"flex", alignItems:"center", justifyContent:"center" } },
+        React.createElement("div",{ style:{ background:"#0f0f0f", width:680, borderRadius:48, padding:28 } },
+          React.createElement("input",{ autoFocus:true, type:"text", placeholder:"Search channels...", value:searchQuery, onChange:e=>setSearchQuery(e.target.value), style:{ width:"100%", background:"#1c1c1c", border:"1px solid #333", padding:20, fontSize:22, borderRadius:60, color:"white", outline:"none" } }),
+          React.createElement("p",{ style:{ marginTop:16, color:"#aaa", textAlign:"center" } },`${filteredChannels.length} results · 🟢 BACK to close`)
+        )
+      );
+    };
+    
+    const LoadingOverlay = () => {
+      if(!loading) return null;
+      return React.createElement("div",{ style:{ position:"absolute", inset:0, background:"#000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:32, zIndex:20 } },
+        React.createElement("div",{ className:"spin", style:{ width:56, height:56, border:"3px solid rgba(255,255,255,0.08)", borderTopColor:"rgba(255,255,255,0.75)", borderRadius:"50%" } }),
+        React.createElement("p",{ style:{ color:"rgba(255,255,255,0.25)", fontSize:15 } },loadStatus),
+        error && React.createElement("button",{ onClick:()=>loadPlaylist(true), style:{ padding:"12px 32px", borderRadius:12, background:"rgba(255,255,255,0.09)", border:"1px solid rgba(255,255,255,0.18)", color:"#fff", fontWeight:700, cursor:"pointer" } },"Retry")
+      );
+    };
+    
+    return React.createElement("div",{ style:{ width:"100vw", height:"100vh", overflow:"hidden", background:"#000", position:"relative" } },
+      isTizen ? React.createElement("object",{ id:"avplay-tv", type:"application/avplayer", style:{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:0 } }) : React.createElement("video",{ id:"fallback-video", autoPlay:true, muted:isMuted, style:{ position:"absolute", inset:0, width:"100%", height:"100%", objectFit:"contain", zIndex:0 } }),
       TopBar(),
-      !loading && React.createElement('div', { style: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10, paddingBottom: 40, background: 'linear-gradient(to top, rgba(0,0,0,0.9), transparent)' } },
+      !loading && React.createElement("div",{ style:{ position:"absolute", bottom:0, left:0, right:0, zIndex:10, paddingBottom:40, background:"linear-gradient(to top, rgba(0,0,0,0.9), transparent)" } },
         CategoriesRow(),
         ChannelStrip(),
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'center', gap: 24, marginTop: 20, fontSize: 12, color: '#444' } },
-          ['🟥 RED : ★ Fav', '🟩 GREEN : Search', '🟨 YELLOW : Refresh', '🟦 BLUE : Source', '▲/▼ Cats/Ch', '◀ ▶ Navigate'].map(h => React.createElement('span', { key: h }, h))
-        )
+        KeyHints()
       ),
-      loadingOverlay,
+      LoadingOverlay(),
       VolumeOSD(),
-      FavToast(),
+      FavToastMsg(),
       SearchModal(),
       SettingsPanel(),
-      React.createElement('style', null, `@keyframes spinAnim { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } } .spin { animation: spinAnim 0.8s linear infinite; }`)
+      React.createElement("style",null,"@keyframes spinAnim{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.spin{animation:spinAnim 0.8s linear infinite;}")
     );
   };
   
-  const rootElement = document.getElementById('root');
-  const root = createRoot(rootElement);
+  const root = createRoot(document.getElementById("root"));
   root.render(React.createElement(App));
 }
 </script>
