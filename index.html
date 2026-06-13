@@ -3,479 +3,379 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Telugu IPTV - Samsung Smart TV Edition</title>
-
-  <!-- React & ReactDOM Production CDN Libraries -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  
-  <!-- Babel Standalone for in-browser JSX compilation -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <script type="text/javascript">
-    // Initialize global configuration defaults for Tizen TV environment[cite: 1]
-    const IPTV_STORAGE_KEYS = {
-      FAVORITES: 'telugu_iptv_favs',
-      LAST_CHANNEL: 'telugu_iptv_last_chan',
-      PLAYLIST: 'telugu_iptv_custom_playlist'
-    };
-
-    // TV Key Mapping Configuration[cite: 1]
-    const TV_KEYS = {
-      UP: 38, DOWN: 40, LEFT: 37, RIGHT: 39, 
-      ENTER: 13, RETURN: 10009, EXIT: 10182
-    };
-
-    // Application state engine initialization layer[cite: 1]
-    window.addEventListener('load', () => {
-      try {
-        // Register remote control keys with Tizen WebAPI core if available[cite: 1]
-        if (window.tizen && window.tizen.tvinputdevice) {
-          window.tizen.tvinputdevice.registerKey('Exit');
-          window.tizen.tvinputdevice.registerKey('Search');
-        }
-      } catch (error) {
-        console.warn("Tizen WebAPI environment not detected. Running in standard web fallback mode.");
-      }
-    });
-  </script>
-
+  <title>Telugu IPTV - Samsung Smart TV</title>
   <style>
-    /* 10-Foot UI Optimization Engine Styles[cite: 1] */
     :root {
-      --focused-border-color: #ffcc00;
-      --bg-dark-accent: #111116;
+      --focus-color: #ffcc00;
+      --bg-main: #08080a;
+      --bg-card: #111116;
       --text-main: #ffffff;
-      --ui-font: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
 
     body {
       margin: 0;
-      padding: 0;
-      background-color: #08080a;
+      padding: 40px;
+      background-color: var(--bg-main);
       color: var(--text-main);
-      font-family: var(--ui-font);
+      font-family: 'Segoe UI', Roboto, sans-serif;
       overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
-
-    .app-container {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      padding: 20px;
       box-sizing: border-box;
     }
 
-    .header {
+    h2 { margin: 0 0 20px 0; font-size: 2rem; }
+
+    /* Layout Components */
+    .header-section {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 10px 40px;
+      margin-bottom: 30px;
     }
 
-    .search-input-display {
+    .search-bar {
       background: #222;
-      padding: 12px 25px;
+      padding: 15px 30px;
       border-radius: 8px;
+      font-size: 1.3rem;
+      border: 3px solid #444;
+      min-width: 350px;
+    }
+
+    .search-bar.focusable:focus {
+      border-color: var(--focus-color);
+      outline: none;
+    }
+
+    .history-banner {
+      background: #1c1c24;
+      border-left: 6px solid var(--focus-color);
+      padding: 15px 25px;
+      margin-bottom: 25px;
+      border-radius: 4px;
       font-size: 1.2rem;
-      border: 2px solid #444;
-      min-width: 300px;
     }
 
-    .search-input-display.active-focus {
-      border-color: var(--focused-border-color);
-    }
-
-    /* Larger Channel Logos layout enhancements[cite: 1] */
-    .channel-grid {
+    /* 10-Foot UI Channel Grid */
+    .grid-container {
       display: flex;
       flex-wrap: wrap;
-      padding: 20px;
-      justify-content: flex-start;
+      gap: 25px;
+      height: 60vh;
       overflow-y: auto;
-      flex-grow: 1;
     }
 
-    .channel-grid-item {
-      width: 210px;
-      height: 210px;
-      margin: 15px;
-      background: var(--bg-dark-accent);
+    .channel-card {
+      width: 220px;
+      height: 220px;
+      background: var(--bg-card);
       border: 4px solid transparent;
       border-radius: 12px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      transition: transform 0.2s ease-in-out, border-color 0.2s;
       box-sizing: border-box;
+      transition: transform 0.15s ease-in-out;
     }
 
-    /* Spatial Focus States[cite: 1] */
-    .channel-grid-item:focus, .channel-grid-item.spatial-focus {
-      border-color: var(--focused-border-color);
+    .channel-card:focus {
+      border-color: var(--focus-color);
       transform: scale(1.08);
       outline: none;
     }
 
-    .channel-logo-large {
-      width: 140px;
-      height: 140px;
+    .channel-card img {
+      width: 130px;
+      height: 130px;
       object-fit: contain;
     }
 
-    .channel-title {
-      margin-top: 10px;
-      font-size: 1.1rem;
-      text-align: center;
-      max-width: 90%;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    .channel-card .title {
+      margin-top: 15px;
+      font-size: 1.2rem;
+      font-weight: bold;
     }
 
-    /* High Visibility TV-Optimized Confirm Overlays[cite: 1] */
-    .tv-modal-overlay {
+    /* Modal Framework */
+    .overlay {
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.85);
-      display: flex; justify-content: center; align-items: center;
+      background: rgba(0, 0, 0, 0.9);
+      display: none;
+      justify-content: center;
+      align-items: center;
       z-index: 9999;
     }
 
-    .tv-confirm-dialog {
+    .overlay.active { display: flex; }
+
+    .modal-box {
       background: #1c1c24;
       padding: 40px;
       border-radius: 16px;
       border: 3px solid #333;
       text-align: center;
-      color: var(--text-main);
     }
 
-    .tv-btn {
-      padding: 15px 40px;
-      margin: 10px;
-      font-size: 1.2rem;
+    .modal-box h3 { margin-top: 0; font-size: 1.8rem; }
+
+    .modal-btn {
+      padding: 15px 45px;
+      margin: 15px;
+      font-size: 1.3rem;
       font-weight: bold;
       background: #2a2a35;
       color: #fff;
       border: 3px solid transparent;
       border-radius: 8px;
-      cursor: pointer;
     }
 
-    .tv-btn:focus, .tv-btn.spatial-focus {
-      border-color: var(--focused-border-color);
+    .modal-btn:focus {
+      border-color: var(--focus-color);
       background: #fff;
       color: #000;
       outline: none;
     }
 
-    /* On-Screen Keyboard Framework Layout[cite: 1] */
-    .keyboard-box {
-      background: #16161a;
-      padding: 25px;
-      border-radius: 12px;
-      border: 2px solid #333;
-    }
-
-    .tv-keyboard-container {
+    /* Keyboard Matrix Layout */
+    .keyboard-grid {
       display: grid;
       grid-template-columns: repeat(10, 1fr);
-      gap: 8px;
-      background: #222;
-      padding: 20px;
-      border-radius: 10px;
-      max-width: 750px;
-      margin: 20px auto;
+      gap: 10px;
+      margin-top: 20px;
+      max-width: 800px;
     }
 
-    .keyboard-key {
+    .key {
       background: #333;
-      color: #fff;
       padding: 15px;
       text-align: center;
       border-radius: 6px;
-      font-weight: bold;
-      border: 2px solid transparent;
       font-size: 1.2rem;
+      font-weight: bold;
+      border: 3px solid transparent;
     }
 
-    .keyboard-key:focus, .keyboard-key.spatial-focus {
-      border-color: var(--focused-border-color);
+    .key:focus {
+      border-color: var(--focus-color);
       background: #fff;
       color: #000;
       outline: none;
-    }
-
-    /* Current Playing Channel Banner */
-    .active-banner {
-      background: #1c1c24;
-      border-left: 6px solid var(--focused-border-color);
-      padding: 15px 40px;
-      margin: 10px 40px;
-      border-radius: 4px;
-      font-size: 1.2rem;
     }
   </style>
 </head>
 <body>
 
-  <!-- React Framework App Target Node -->
-  <div id="root"></div>
+  <!-- UI Layout Elements -->
+  <div class="header-section">
+    <h2>తెలుగు IPTV - Smart TV Core</h2>
+    <div id="searchBar" class="search-bar focusable" tabIndex="0">రిమోట్ తో వెతకడానికి OK నొక్కండి...</div>
+  </div>
 
-  <!-- React Custom Application Logic Logic Pipeline Container -->
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+  <div id="historyBanner" class="history-banner" style="display: none;"></div>
 
-    // Helper functions for parsing storage mechanics safely[cite: 1]
-    const getSavedData = (key, fallback) => {
-      try {
-        const data = localStorage.getItem(key);
-        return data ? JSON.parse(data) : fallback;
-      } catch (e) {
-        console.error("Error reading from localStorage:", e);
-        return fallback;
-      }
-    };
+  <div id="channelGrid" class="grid-container"></div>
 
-    const saveDetails = (key, data) => {
-      try {
-        localStorage.setItem(key, JSON.stringify(data));
-      } catch (e) {
-        console.error("Error writing to localStorage:", e);
-      }
-    };
+  <!-- On-Screen Keyboard Overlay -->
+  <div id="keyboardOverlay" class="overlay">
+    <div class="modal-box">
+      <h3>ఛానెల్స్ కోసం వెతకండి</h3>
+      <div id="keyboardGrid" class="keyboard-grid"></div>
+    </div>
+  </div>
 
-    // Sample Telugu Channels Database Mock Payload
-    const SAMPLE_CHANNELS = [
-      { id: 1, name: 'ETV Telugu', logo: 'https://via.placeholder.com/140?text=ETV' },
-      { id: 2, name: 'Star Maa', logo: 'https://via.placeholder.com/140?text=Star+Maa' },
-      { id: 3, name: 'Zee Telugu', logo: 'https://via.placeholder.com/140?text=Zee+Telugu' },
-      { id: 4, name: 'TV9 Telugu', logo: 'https://via.placeholder.com/140?text=TV9' },
-      { id: 5, name: 'NTV Telugu', logo: 'https://via.placeholder.com/140?text=NTV' },
-      { id: 6, name: 'Gemini TV', logo: 'https://via.placeholder.com/140?text=Gemini' },
+  <!-- Exit Prompt Overlay -->
+  <div id="exitOverlay" class="overlay">
+    <div class="modal-box">
+      <h3>యాప్ నుండి నిష్క్రమించాలా?</h3>
+      <p>మీరు ఖచ్చితంగా తెలుగు IPTV అప్లికేషన్‌ను మూసివేయాలనుకుంటున్నారా?</p>
+      <button id="exitYes" class="modal-btn">అవును</button>
+      <button id="exitNo" class="modal-btn">వద్దు</button>
+    </div>
+  </div>
+
+  <script type="text/javascript">
+    // TV Keys Engine Constants
+    const TV_KEYS = { UP: 38, DOWN: 40, LEFT: 37, RIGHT: 39, ENTER: 13, RETURN: 10009, EXIT: 10182 };
+
+    // Application Channels Mock Data
+    const CHANNELS = [
+      { name: 'ETV Telugu', logo: 'https://via.placeholder.com/130?text=ETV' },
+      { name: 'Star Maa', logo: 'https://via.placeholder.com/130?text=Star+Maa' },
+      { name: 'Zee Telugu', logo: 'https://via.placeholder.com/130?text=Zee+Telugu' },
+      { name: 'TV9 Telugu', logo: 'https://via.placeholder.com/130?text=TV9' },
+      { name: 'NTV Telugu', logo: 'https://via.placeholder.com/130?text=NTV' },
+      { name: 'Gemini TV', logo: 'https://via.placeholder.com/130?text=Gemini' }
     ];
 
-    const ALPHABET_KEYBOARD = [
+    const KEYBOARD_KEYS = [
       'A','B','C','D','E','F','G','H','I','J',
       'K','L','M','N','O','P','Q','R','S','T',
       'U','V','W','X','Y','Z','1','2','3','4',
       '5','6','7','8','9','0','Space','Clear','Close'
     ];
 
-    function TeluguIPTVApp() {
-      // Functional UI Routing and State Blocks
-      const [channels, setChannels] = useState(SAMPLE_CHANNELS);
-      const [searchQuery, setSearchQuery] = useState("");
-      const [lastChannel, setLastChannel] = useState(() => getSavedData(IPTV_STORAGE_KEYS.LAST_CHANNEL, null));
-      const [showExitPrompt, setShowExitPrompt] = useState(false);
-      const [showKeyboard, setShowKeyboard] = useState(false);
+    let currentQuery = "";
+
+    // Register Remote Input Hooks with Hardware Core[cite: 1]
+    window.addEventListener('load', () => {
+      try {
+        if (window.tizen && window.tizen.tvinputdevice) {
+          window.tizen.tvinputdevice.registerKey('Exit');
+        }
+      } catch (e) { console.log("Standard Fallback Environment Loaded Engine Active."); }
       
-      // Spatial Focus Layout Coords Focus Management State
-      // UI Modes: 'GRID' | 'KEYBOARD' | 'EXIT_PROMPT' | 'SEARCH_BAR'
-      const [currentUiMode, setCurrentUiMode] = useState('GRID');
-      const [focusedGridIndex, setFocusedGridIndex] = useState(0);
-      const [focusedKeyIndex, setFocusedKeyIndex] = useState(0);
-      const [focusedExitBtnIndex, setFocusedExitBtnIndex] = useState(0);
+      initApp();
+    });
 
-      const filteredChannels = channels.filter(ch => 
-        ch.name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-
-      // Handle custom TV system runtime events directly within React pipeline[cite: 1]
-      useEffect(() => {
-        const handleExitEvent = () => {
-          setCurrentUiMode('EXIT_PROMPT');
-          setFocusedExitBtnIndex(0);
-          setShowExitPrompt(true);
-        };
-
-        window.addEventListener('toggleExitPrompt', handleExitEvent);
-        return () => window.removeEventListener('toggleExitPrompt', handleExitEvent);
-      }, []);
-
-      // Main Remote Control Remote D-Pad Structural Navigation Mapping Handler Engine 
-      useEffect(() => {
-        const handleKeyDown = (e) => {
-          const keyCode = e.keyCode;
-
-          // Universal Back Key Handlers
-          if (keyCode === TV_KEYS.RETURN) {
-            e.preventDefault();
-            if (currentUiMode === 'KEYBOARD') {
-              setCurrentUiMode('GRID');
-              setShowKeyboard(false);
-            } else if (currentUiMode === 'GRID') {
-              setCurrentUiMode('EXIT_PROMPT');
-              setShowExitPrompt(true);
-            }
-            return;
-          }
-
-          // Contextual Multi-modal Key Routing Matrices
-          switch(currentUiMode) {
-            case 'GRID':
-              if (keyCode === TV_KEYS.RIGHT) {
-                if (focusedGridIndex < filteredChannels.length - 1) setFocusedGridIndex(prev => prev + 1);
-              } else if (keyCode === TV_KEYS.LEFT) {
-                if (focusedGridIndex > 0) setFocusedGridIndex(prev => prev - 1);
-              } else if (keyCode === TV_KEYS.UP) {
-                // Directional Skip up to search field
-                if (focusedGridIndex < 4) {
-                  setCurrentUiMode('SEARCH_BAR');
-                } else {
-                  setFocusedGridIndex(prev => Math.max(0, prev - 4));
-                }
-              } else if (keyCode === TV_KEYS.DOWN) {
-                if (focusedGridIndex + 4 < filteredChannels.length) {
-                  setFocusedGridIndex(prev => prev + 4);
-                }
-              } else if (keyCode === TV_KEYS.ENTER) {
-                if (filteredChannels[focusedGridIndex]) {
-                  const targetChannel = filteredChannels[focusedGridIndex].name;
-                  setLastChannel(targetChannel);
-                  saveDetails(IPTV_STORAGE_KEYS.LAST_CHANNEL, targetChannel);
-                }
-              }
-              break;
-
-            case 'SEARCH_BAR':
-              if (keyCode === TV_KEYS.DOWN) {
-                setCurrentUiMode('GRID');
-                setFocusedGridIndex(0);
-              } else if (keyCode === TV_KEYS.ENTER) {
-                setCurrentUiMode('KEYBOARD');
-                setFocusedKeyIndex(0);
-                setShowKeyboard(true);
-              }
-              break;
-
-            case 'KEYBOARD':
-              // 10-Column Spatial Math Navigation Modulo Engine[cite: 1]
-              if (keyCode === TV_KEYS.RIGHT) {
-                if (focusedKeyIndex < ALPHABET_KEYBOARD.length - 1) setFocusedKeyIndex(prev => prev + 1);
-              } else if (keyCode === TV_KEYS.LEFT) {
-                if (focusedKeyIndex > 0) setFocusedKeyIndex(prev => prev - 1);
-              } else if (keyCode === TV_KEYS.DOWN) {
-                if (focusedKeyIndex + 10 < ALPHABET_KEYBOARD.length) setFocusedKeyIndex(prev => prev + 10);
-              } else if (keyCode === TV_KEYS.UP) {
-                if (focusedKeyIndex >= 10) setFocusedKeyIndex(prev => prev - 10);
-              } else if (keyCode === TV_KEYS.ENTER) {
-                const pressedKey = ALPHABET_KEYBOARD[focusedKeyIndex];
-                if (pressedKey === 'Close') {
-                  setShowKeyboard(false);
-                  setCurrentUiMode('GRID');
-                } else if (pressedKey === 'Clear') {
-                  setSearchQuery("");
-                } else if (pressedKey === 'Space') {
-                  setSearchQuery(prev => prev + " ");
-                } else {
-                  setSearchQuery(prev => prev + pressedKey);
-                }
-              }
-              break;
-
-            case 'EXIT_PROMPT':
-              if (keyCode === TV_KEYS.LEFT || keyCode === TV_KEYS.RIGHT) {
-                setFocusedExitBtnIndex(prev => prev === 0 ? 1 : 0);
-              } else if (keyCode === TV_KEYS.ENTER) {
-                if (focusedExitBtnIndex === 0) {
-                  // Confirmed exit sequence: shut application runtime thread down
-                  if (window.tizen && window.tizen.application) {
-                    window.tizen.application.getCurrentApplication().exit();
-                  } else {
-                    alert("Application would close down on a native Samsung TV platform system.");
-                    setShowExitPrompt(false);
-                    setCurrentUiMode('GRID');
-                  }
-                } else {
-                  // Cancel Exit Sequence
-                  setShowExitPrompt(false);
-                  setCurrentUiMode('GRID');
-                }
-              }
-              break;
-          }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-      }, [currentUiMode, focusedGridIndex, focusedKeyIndex, focusedExitBtnIndex, filteredChannels]);
-
-      return (
-        <div className="app-container">
-          <div className="header">
-            <h2>తెలుగు IPTV - Smart TV Core</h2>
-            <div className={`search-input-display ${currentUiMode === 'SEARCH_BAR' ? 'active-focus' : ''}`}>
-              {searchQuery || "రిమోట్ తో వెతకడానికి OK నొక్కండి..."}
-            </div>
-          </div>
-
-          {lastChannel && (
-            <div className="active-banner">
-              <strong>చివరిగా చూసిన ఛానెల్:</strong> {lastChannel}
-            </div>
-          )}
-
-          {/* Core Grid Matrix Rendering Framework Node[cite: 1] */}
-          <div className="channel-grid">
-            {filteredChannels.map((channel, idx) => (
-              <div 
-                key={channel.id} 
-                className={`channel-grid-item ${(currentUiMode === 'GRID' && idx === focusedGridIndex) ? 'spatial-focus' : ''}`}
-              >
-                <img src={channel.logo} alt={channel.name} className="channel-logo-large" />
-                <div className="channel-title">{channel.name}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Virtual Dynamic On-Screen Overlay Keyboard Framework Layer[cite: 1] */}
-          {showKeyboard && (
-            <div className="tv-modal-overlay">
-              <div className="keyboard-box">
-                <h3>ఛానెల్స్ కోసం వెతకండి</h3>
-                <div className="tv-keyboard-container">
-                  {ALPHABET_KEYBOARD.map((keyString, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`keyboard-key ${(currentUiMode === 'KEYBOARD' && idx === focusedKeyIndex) ? 'spatial-focus' : ''}`}
-                    >
-                      {keyString}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* High-Visibility Confirmation Prompt Engine Integration[cite: 1] */}
-          {showExitPrompt && (
-            <div className="tv-modal-overlay">
-              <div className="tv-confirm-dialog">
-                <h2>యాప్ నుండి నిష్క్రమించాలా?</h2>
-                <p>మీరు ఖచ్చితంగా తెలుగు IPTV అప్లికేషన్‌ను మూసివేయాలనుకుంటున్నారా?</p>
-                <div>
-                  <button className={`tv-btn ${(focusedExitBtnIndex === 0) ? 'spatial-focus' : ''}`}>అవును</button>
-                  <button className={`tv-btn ${(focusedExitBtnIndex === 1) ? 'spatial-focus' : ''}`}>వద్దు</button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      );
+    function initApp() {
+      renderChannels();
+      renderKeyboard();
+      updateHistoryDisplay();
+      
+      // Set Initial Spatial Focus Core Target
+      const firstCard = document.querySelector('.channel-card');
+      if (firstCard) firstCard.focus();
     }
 
-    // Mount runtime build node smoothly to the UI tree hook
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<TeluguIPTVApp />);
-  </script>
+    function renderChannels() {
+      const container = document.getElementById('channelGrid');
+      container.innerHTML = "";
+      
+      const filtered = CHANNELS.filter(ch => ch.name.toLowerCase().includes(currentQuery.toLowerCase()));
+      
+      filtered.forEach((ch, idx) => {
+        const card = document.createElement('div');
+        card.className = "channel-card";
+        card.tabIndex = 0;
+        card.innerHTML = `<img src="${ch.logo}"><div class="title">${ch.name}</div>`;
+        
+        // Channel Selection Logic
+        card.addEventListener('keydown', (e) => {
+          if (e.keyCode === TV_KEYS.ENTER) {
+            localStorage.setItem('iptv_last_channel', ch.name);
+            updateHistoryDisplay();
+          }
+        });
+        
+        // Spatial Navigation Engine Handlers
+        card.addEventListener('keydown', (e) => handleGridNavigation(e, idx, filtered.length));
+        container.appendChild(card);
+      });
+    }
 
+    function renderKeyboard() {
+      const grid = document.getElementById('keyboardGrid');
+      KEYBOARD_KEYS.forEach((keyText, idx) => {
+        const keyEl = document.createElement('div');
+        keyEl.className = "key";
+        keyEl.tabIndex = 0;
+        keyEl.textContent = keyText;
+        
+        keyEl.addEventListener('keydown', (e) => {
+          if (e.keyCode === TV_KEYS.ENTER) {
+            e.preventDefault();
+            if (keyText === 'Close') {
+              toggleModal('keyboardOverlay', false);
+              document.getElementById('searchBar').focus();
+            } else if (keyText === 'Clear') {
+              currentQuery = "";
+              document.getElementById('searchBar').textContent = "రిమోట్ తో వెతకడానికి OK నొక్కండి...";
+              renderChannels();
+            } else {
+              currentQuery += (keyText === 'Space') ? " " : keyText;
+              document.getElementById('searchBar').textContent = currentQuery;
+              renderChannels();
+            }
+          }
+          handleKeyboardNavigation(e, idx);
+        });
+        grid.appendChild(keyEl);
+      });
+    }
+
+    function updateHistoryDisplay() {
+      const lastChan = localStorage.getItem('iptv_last_channel');
+      const banner = document.getElementById('historyBanner');
+      if (lastChan) {
+        banner.textContent = `చివరిగా చూసిన ఛానెల్: ${lastChan}`;
+        banner.style.display = "block";
+      }
+    }
+
+    function toggleModal(id, show) {
+      document.getElementById(id).classList.toggle('active', show);
+    }
+
+    // Nav-Engine Logic Matrix for Grid Context
+    function handleGridNavigation(e, idx, totalItems) {
+      const cards = document.querySelectorAll('.channel-card');
+      if (e.keyCode === TV_KEYS.RIGHT && idx < totalItems - 1) cards[idx + 1].focus();
+      if (e.keyCode === TV_KEYS.LEFT && idx > 0) cards[idx - 1].focus();
+      if (e.keyCode === TV_KEYS.DOWN && idx + 4 < totalItems) cards[idx + 4].focus();
+      if (e.keyCode === TV_KEYS.UP) {
+        if (idx < 4) document.getElementById('searchBar').focus();
+        else cards[idx - 4].focus();
+      }
+    }
+
+    // Nav-Engine Logic Matrix for Virtual Keyboard Context (10 Column Layout)
+    function handleKeyboardNavigation(e, idx) {
+      const keys = document.querySelectorAll('.key');
+      if (e.keyCode === TV_KEYS.RIGHT && idx < KEYBOARD_KEYS.length - 1) keys[idx + 1].focus();
+      if (e.keyCode === TV_KEYS.LEFT && idx > 0) keys[idx - 1].focus();
+      if (e.keyCode === TV_KEYS.DOWN && idx + 10 < KEYBOARD_KEYS.length) keys[idx + 10].focus();
+      if (e.keyCode === TV_KEYS.UP && idx >= 10) keys[idx - 10].focus();
+    }
+
+    // Search Bar Core Key Interceptor
+    document.getElementById('searchBar').addEventListener('keydown', (e) => {
+      if (e.keyCode === TV_KEYS.ENTER) {
+        toggleModal('keyboardOverlay', true);
+        document.querySelector('.key').focus();
+      }
+      if (e.keyCode === TV_KEYS.DOWN) {
+        const firstCard = document.querySelector('.channel-card');
+        if (firstCard) firstCard.focus();
+      }
+    });
+
+    // Native Exit Handler Engine Integration Matrix[cite: 1]
+    window.addEventListener('keydown', (e) => {
+      if (e.keyCode === TV_KEYS.RETURN || e.keyCode === TV_KEYS.EXIT) {
+        e.preventDefault();
+        
+        if (document.getElementById('keyboardOverlay').classList.contains('active')) {
+          toggleModal('keyboardOverlay', false);
+          document.getElementById('searchBar').focus();
+        } else {
+          toggleModal('exitOverlay', true);
+          document.getElementById('exitNo').focus();
+        }
+      }
+    });
+
+    // Exit Choice Interceptors
+    document.getElementById('exitYes').addEventListener('keydown', (e) => {
+      if (e.keyCode === TV_KEYS.ENTER) {
+        if (window.tizen && window.tizen.application) {
+          window.tizen.application.getCurrentApplication().exit();
+        } else {
+          alert("Native TV Application Teardown Context Closed Interceptor Fired.");
+          toggleModal('exitOverlay', false);
+        }
+      }
+      if (e.keyCode === TV_KEYS.RIGHT || e.keyCode === TV_KEYS.LEFT) document.getElementById('exitNo').focus();
+    });
+
+    document.getElementById('exitNo').addEventListener('keydown', (e) => {
+      if (e.keyCode === TV_KEYS.ENTER) {
+        toggleModal('exitOverlay', false);
+        const firstCard = document.querySelector('.channel-card');
+        if (firstCard) firstCard.focus();
+      }
+      if (e.keyCode === TV_KEYS.RIGHT || e.keyCode === TV_KEYS.LEFT) document.getElementById('exitYes').focus();
+    });
+  </script>
 </body>
 </html>
-
-```
