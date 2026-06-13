@@ -3,1575 +3,1044 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=1920"/>
-<title>TeluguIPTV</title>
-<meta name="description" content="Telugu IPTV for Samsung Smart TV"/>
-<!-- Tizen TV WebAPIs -->
+<title>Telugu IPTV</title>
+<link rel="icon" href="./icon.jpg"/>
 <script type="text/javascript" src="$WEBAPIS/webapis/webapis.js"></script>
-<!-- React 18 from CDN -->
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<!-- Babel standalone for JSX transpilation in browser -->
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;outline:none;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-user-select:none;user-select:none;outline:none;-webkit-tap-highlight-color:transparent;}
 html,body,#root{width:100vw;height:100vh;overflow:hidden;background:#000;font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
 ::-webkit-scrollbar{width:0;height:0;}
-input::placeholder{color:rgba(255,255,255,.18);}
-input{-webkit-user-select:text;user-select:text;}
+input{-webkit-user-select:text;user-select:text;background:none;border:none;color:#fff;font-family:inherit;outline:none;}
+input::placeholder{color:rgba(255,255,255,.2);}
+button{font-family:inherit;border:none;cursor:pointer;background:transparent;}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
 @keyframes slideRight{from{opacity:0;transform:translateX(100%)}to{opacity:1;transform:translateX(0)}}
-@keyframes spinAnim{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
-@keyframes fadeInRow{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes popIn{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.1}}
+@keyframes popIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
 .fade-in{animation:fadeIn .22s ease both}
 .slide-up{animation:slideUp .28s cubic-bezier(.16,1,.3,1) both}
-.slide-right{animation:slideRight .30s cubic-bezier(.16,1,.3,1) both}
-.spin{animation:spinAnim .85s linear infinite}
+.slide-right{animation:slideRight .3s cubic-bezier(.16,1,.3,1) both}
+.spin{animation:spin .85s linear infinite}
 .blink{animation:blink 1.6s ease-in-out infinite}
 .pop-in{animation:popIn .18s cubic-bezier(.34,1.56,.64,1) both}
 </style>
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-presets="react">
-/* ═══════════════════════════════════════════════════════════
-   DESTRUCTURE REACT
-═══════════════════════════════════════════════════════════ */
-const {
-  useState, useEffect, useRef, useCallback,
-  useMemo, useLayoutEffect, createContext, useContext,
-} = React;
+<script>
+(function(){
+'use strict';
+var R=React, RD=ReactDOM;
+var h=R.createElement;
+var useState=R.useState, useEffect=R.useEffect, useRef=R.useRef,
+    useCallback=R.useCallback, useMemo=R.useMemo, useLayoutEffect=R.useLayoutEffect;
 
-/* ═══════════════════════════════════════════════════════════
-   CONSTANTS
-═══════════════════════════════════════════════════════════ */
-const HIDE_MS    = 5000;
-const VOL_HUD_MS = 2000;
-const DIGIT_TIMEOUT = 2000; // ms to wait before jumping to channel
-const DB_NAME    = 'TeluguIPTV';
-const DB_VER     = 2;
+/* ── Constants ─────────────────────────────── */
+var HIDE_MS=5000, VOL_MS=2000, DIGIT_MS=2000;
+var CARD_W=252, CARD_H=290, GAP=28, STEP=CARD_W+GAP;
+var CX=960, CARD_L=CX-CARD_W/2, RING_PAD=5;
+var PS={NONE:'NONE',IDLE:'IDLE',LOADING:'LOADING',PLAYING:'PLAYING',PAUSED:'PAUSED',ERROR:'ERROR'};
 
-/* ═══════════════════════════════════════════════════════════
-   INDEXEDDB HELPER
-═══════════════════════════════════════════════════════════ */
-let _db = null;
-async function openDB() {
-  if (_db) return _db;
-  return new Promise((res, rej) => {
-    const req = indexedDB.open(DB_NAME, DB_VER);
-    req.onupgradeneeded = e => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('playlists'))
-        db.createObjectStore('playlists', { keyPath: 'id' });
-      if (!db.objectStoreNames.contains('meta'))
-        db.createObjectStore('meta', { keyPath: 'key' });
-    };
-    req.onsuccess  = e => { _db = e.target.result; res(_db); };
-    req.onerror    = e => rej(e.target.error);
+/* ── Storage ────────────────────────────────── */
+var LS={
+  get:function(k,d){try{var v=localStorage.getItem(k);return v===null?d:JSON.parse(v);}catch(e){return d;}},
+  set:function(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+};
+
+/* ── IndexedDB ──────────────────────────────── */
+var _db=null;
+function openDB(cb){
+  if(_db){cb(_db);return;}
+  var req=indexedDB.open('TIPTV2',2);
+  req.onupgradeneeded=function(e){
+    var db=e.target.result;
+    if(!db.objectStoreNames.contains('pl'))db.createObjectStore('pl',{keyPath:'id'});
+  };
+  req.onsuccess=function(e){_db=e.target.result;cb(_db);};
+  req.onerror=function(){cb(null);};
+}
+function idbGet(key,cb){
+  openDB(function(db){
+    if(!db){cb(null);return;}
+    try{
+      var tx=db.transaction('pl','readonly');
+      var req=tx.objectStore('pl').get(key);
+      req.onsuccess=function(e){cb(e.target.result||null);};
+      req.onerror=function(){cb(null);};
+    }catch(e){cb(null);}
+  });
+}
+function idbPut(val,cb){
+  openDB(function(db){
+    if(!db){if(cb)cb(false);return;}
+    try{
+      var tx=db.transaction('pl','readwrite');
+      tx.objectStore('pl').put(val);
+      if(cb)cb(true);
+    }catch(e){if(cb)cb(false);}
   });
 }
 
-async function idbGet(store, key) {
-  try {
-    const db  = await openDB();
-    return new Promise((res, rej) => {
-      const tx  = db.transaction(store, 'readonly');
-      const req = tx.objectStore(store).get(key);
-      req.onsuccess = e => res(e.target.result ?? null);
-      req.onerror   = e => rej(e.target.error);
-    });
-  } catch { return null; }
-}
-
-async function idbPut(store, value) {
-  try {
-    const db = await openDB();
-    return new Promise((res, rej) => {
-      const tx  = db.transaction(store, 'readwrite');
-      const req = tx.objectStore(store).put(value);
-      req.onsuccess = () => res(true);
-      req.onerror   = e => rej(e.target.error);
-    });
-  } catch { return false; }
-}
-
-/* ═══════════════════════════════════════════════════════════
-   LOCALSTORAGE HELPER (settings only — small data)
-═══════════════════════════════════════════════════════════ */
-const storage = {
-  get(key, fallback = null) {
-    try { const r = localStorage.getItem(key); return r===null?fallback:JSON.parse(r); } catch { return fallback; }
-  },
-  set(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch { return false; }
-  },
-  remove(key) {
-    try { localStorage.removeItem(key); return true; } catch { return false; }
-  },
-};
-
-/* ═══════════════════════════════════════════════════════════
-   PLAYLIST SOURCES
-═══════════════════════════════════════════════════════════ */
-const BUILT_IN_SOURCES = [
-  { id:'tel',           label:'Telugu Only',      desc:'Telugu language channels (~200)',   url:'https://iptv-org.github.io/iptv/languages/tel.m3u',          builtIn:true },
-  { id:'india',         label:'India — All',       desc:'All Indian channels (~800)',        url:'https://iptv-org.github.io/iptv/countries/in.m3u',           builtIn:true },
-  { id:'sports',        label:'Sports',            desc:'Sports channels worldwide',         url:'https://iptv-org.github.io/iptv/categories/sports.m3u',      builtIn:true },
-  { id:'news',          label:'News',              desc:'News channels worldwide',           url:'https://iptv-org.github.io/iptv/categories/news.m3u',        builtIn:true },
-  { id:'entertainment', label:'Entertainment',     desc:'Entertainment channels worldwide',  url:'https://iptv-org.github.io/iptv/categories/entertainment.m3u',builtIn:true },
+/* ── Playlist sources ───────────────────────── */
+var SOURCES=[
+  {id:'tel',   label:'Telugu',       desc:'Telugu language channels',          url:'https://iptv-org.github.io/iptv/languages/tel.m3u'},
+  {id:'india', label:'India — All',  desc:'All Indian channels (~800)',         url:'https://iptv-org.github.io/iptv/countries/in.m3u'},
+  {id:'sports',label:'Sports',       desc:'Sports channels worldwide',          url:'https://iptv-org.github.io/iptv/categories/sports.m3u'},
+  {id:'news',  label:'News',         desc:'News channels worldwide',            url:'https://iptv-org.github.io/iptv/categories/news.m3u'},
+  {id:'ent',   label:'Entertainment',desc:'Entertainment channels worldwide',   url:'https://iptv-org.github.io/iptv/categories/entertainment.m3u'}
 ];
-const DEFAULT_SOURCE_ID = 'tel';
-const CFG_KEY     = 'tiptv_cfg_v4';
-const CUSTOM_SRCS_KEY = 'tiptv_custom_sources';
-const OVERRIDES_KEY   = 'tiptv_overrides';
-const FAVORITES_KEY   = 'tiptv_favorites';
-const LAST_CH_KEY     = 'tiptv_last_channel';
+var DEF_SRC='tel';
+var CFG_KEY='tiptv_cfg_v5';
+var CUST_KEY='tiptv_custom_srcs';
+var FAV_KEY='tiptv_favs';
+var LAST_KEY='tiptv_last';
+var OVR_KEY='tiptv_overrides';
 
-function getAllSources() {
-  const custom = storage.get(CUSTOM_SRCS_KEY, []);
-  return [...BUILT_IN_SOURCES, ...custom];
-}
+function getAllSources(){return SOURCES.concat(LS.get(CUST_KEY,[]));}
+function getSrcById(id){return getAllSources().find(function(s){return s.id===id;})||SOURCES[0];}
 
-function getSourceById(id) {
-  return getAllSources().find(s => s.id === id) ?? BUILT_IN_SOURCES[0];
-}
+/* ── M3U parser ─────────────────────────────── */
+var PROXIES=[
+  function(u){return u;},
+  function(u){return'https://corsproxy.io/?'+encodeURIComponent(u);},
+  function(u){return'https://api.allorigins.win/raw?url='+encodeURIComponent(u);}
+];
 
-/* ═══════════════════════════════════════════════════════════
-   M3U PARSER (sync fallback, also used by worker result)
-═══════════════════════════════════════════════════════════ */
-function parseExtInf(line) {
-  const safe = re => { try { return line.match(re)?.[1]?.trim()??''; } catch { return ''; } };
-  const lc = line.lastIndexOf(',');
-  const dn = lc>=0 ? line.slice(lc+1).trim() : '';
-  return {
-    id:'', name:(safe(/tvg-name="([^"]*)"/)|| dn ||'Unknown').trim(),
-    logo:safe(/tvg-logo="([^"]*)"/), group:(safe(/group-title="([^"]*)"/)|| 'General').trim(),
-    language:safe(/tvg-language="([^"]*)"/), country:safe(/tvg-country="([^"]*)"/), url:'',
-  };
-}
-function parseM3USync(text) {
-  const channels=[]; let cur=null;
-  for (const raw of text.split('\n')) {
-    const line = raw.trim();
-    if (!line) continue;
-    if (line.startsWith('#EXTINF:'))       { cur = parseExtInf(line); }
-    else if (line.startsWith('#'))         { continue; }
-    else if (cur && (line.startsWith('http')||line.startsWith('rtmp'))) {
-      cur.url=line; cur.id=`ch_${channels.length}`; channels.push(cur); cur=null;
+function parseM3U(text){
+  var chs=[],cur=null,lines=text.split('\n');
+  for(var i=0;i<lines.length;i++){
+    var line=lines[i].trim();
+    if(!line)continue;
+    if(line.startsWith('#EXTINF:')){
+      var lc=line.lastIndexOf(',');
+      var dn=lc>=0?line.slice(lc+1).trim():'';
+      var safe=function(re){try{var m=line.match(re);return m?m[1].trim():'';}catch(e){return'';}};
+      cur={id:'',name:(safe(/tvg-name="([^"]*)"/)||dn||'Unknown').trim(),
+           logo:safe(/tvg-logo="([^"]*)"/),
+           group:(safe(/group-title="([^"]*)"/) ||'General').trim(),
+           url:''};
+    } else if(!line.startsWith('#')&&cur&&(line.startsWith('http')||line.startsWith('rtmp'))){
+      cur.url=line; cur.id='ch_'+chs.length; chs.push(cur); cur=null;
     }
   }
-  return channels;
+  return chs;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   CATEGORY HELPERS
-═══════════════════════════════════════════════════════════ */
-function getCategoryIcon(g='') {
-  const l=g.toLowerCase();
-  if(l.includes('news'))                            return '📰';
-  if(l.includes('movie')||l.includes('film'))       return '🎬';
-  if(l.includes('music')||l.includes('song'))       return '🎵';
-  if(l.includes('sport')||l.includes('cricket'))    return '🏏';
-  if(l.includes('kids')||l.includes('cartoon'))     return '🧒';
-  if(l.includes('entertain')||l.includes('serial')) return '🎭';
-  if(l.includes('devot')||l.includes('spirit'))     return '🙏';
-  if(l.includes('comedy'))                          return '😂';
-  if(l.includes('telugu'))                          return '🌟';
-  if(l.includes('tamil'))                           return '🎪';
-  if(l.includes('hindi'))                           return '🇮🇳';
-  if(l.includes('english'))                         return '🌐';
-  return '📡';
-}
-function extractCategories(channels) {
-  if (!Array.isArray(channels)) return [{ name:'All', count:0, icon:'📺' }];
-  const map = new Map();
-  for (const ch of channels) {
-    const g = ch?.group||'General';
-    const e = map.get(g);
-    if (e) e.count++; else map.set(g,{name:g,count:1,icon:getCategoryIcon(g)});
-  }
-  const cats = Array.from(map.values()).sort((a,b)=>b.count-a.count);
-  return [{name:'All',count:channels.length,icon:'📺'}, ...cats];
-}
-function filterByCategory(chs, cat) {
-  if (!cat||cat==='All'||cat==='⭐ Favorites') return chs;
-  return chs.filter(ch=>ch?.group===cat);
-}
-function searchChannels(chs, q) {
-  if (!q) return chs;
-  const lq=q.toLowerCase();
-  return chs.filter(ch=>ch?.name?.toLowerCase().includes(lq));
-}
-
-/* ═══════════════════════════════════════════════════════════
-   FETCH WITH PROXIES
-═══════════════════════════════════════════════════════════ */
-const PROXIES=[u=>u, u=>`https://corsproxy.io/?${encodeURIComponent(u)}`, u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`];
-async function fetchPlaylist(url) {
-  for (const proxy of PROXIES) {
-    const ctrl = new AbortController();
-    const t = setTimeout(()=>ctrl.abort(), 18000);
-    try {
-      const r = await fetch(proxy(url),{signal:ctrl.signal,headers:{Accept:'application/x-mpegurl,*/*'}});
+async function fetchM3U(url){
+  for(var i=0;i<PROXIES.length;i++){
+    var ctrl=new AbortController(), t=setTimeout(function(){ctrl.abort();},18000);
+    try{
+      var r=await fetch(PROXIES[i](url),{signal:ctrl.signal,headers:{Accept:'application/x-mpegurl,*/*'}});
       clearTimeout(t);
-      if (r.ok) { const txt=await r.text(); if(txt.includes('#EXTINF')||txt.includes('#EXTM3U')) return txt; }
-    } catch { clearTimeout(t); }
+      if(r.ok){var txt=await r.text(); if(txt.includes('#EXTINF')||txt.includes('#EXTM3U'))return txt;}
+    }catch(e){clearTimeout(t);}
   }
   return null;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   TTL MAP
-═══════════════════════════════════════════════════════════ */
-const TTL_MAP=[3600000, 6*3600000, 12*3600000, 24*3600000];
-
-/* ═══════════════════════════════════════════════════════════
-   PLAYER STATE
-═══════════════════════════════════════════════════════════ */
-const PS={NONE:'NONE',IDLE:'IDLE',LOADING:'LOADING',PLAYING:'PLAYING',PAUSED:'PAUSED',ERROR:'ERROR'};
-
-/* ═══════════════════════════════════════════════════════════
-   REMOTE KEY CODES
-═══════════════════════════════════════════════════════════ */
-const KEYS={
-  UP:38,DOWN:40,LEFT:37,RIGHT:39,ENTER:13,
-  BACK:10009,EXIT:10182,
-  PLAY:415,PAUSE:19,PLAY_PAUSE:10252,STOP:413,
-  FAST_FORWARD:417,REWIND:412,
-  NUM_0:48,NUM_9:57,
-  RED:403,GREEN:404,YELLOW:405,BLUE:406,
-  CHANNEL_UP:427,CHANNEL_DOWN:428,
-  VOLUME_UP:447,VOLUME_DOWN:448,MUTE:449,
-  INFO:457,TOOLS:10135,GUIDE:458,
-};
-const TIZEN_KEY_NAMES=[
-  'MediaPlayPause','MediaPlay','MediaPause','MediaStop','MediaFastForward','MediaRewind',
-  'ChannelUp','ChannelDown','VolumeUp','VolumeDown','VolumeMute',
-  'ColorF0Red','ColorF1Green','ColorF2Yellow','ColorF3Blue',
-  'Exit','Tools','Guide','Info','Return',
+/* ── Category helpers ───────────────────────── */
+var ICON_MAP=[
+  [/news/,'📰'],[/movie|film/,'🎬'],[/music|song/,'🎵'],[/sport|cricket/,'🏏'],
+  [/kids|cartoon/,'🧒'],[/entertain|serial/,'🎭'],[/devot|spirit/,'🙏'],
+  [/comedy/,'😂'],[/telugu/,'🌟'],[/tamil/,'🎪'],[/hindi/,'🇮🇳'],[/english/,'🌐']
 ];
-function registerTizenKeys() {
-  try { if(window.tizen?.tvinputdevice) TIZEN_KEY_NAMES.forEach(k=>{try{window.tizen.tvinputdevice.registerKey(k);}catch{}}); } catch {}
+function catIcon(g){
+  g=(g||'').toLowerCase();
+  for(var i=0;i<ICON_MAP.length;i++)if(ICON_MAP[i][0].test(g))return ICON_MAP[i][1];
+  return '📡';
+}
+function getCategories(chs){
+  if(!chs||!chs.length)return [{name:'All',count:0,icon:'📺'}];
+  var map={};
+  chs.forEach(function(ch){var g=ch.group||'General';if(!map[g])map[g]={name:g,count:0,icon:catIcon(g)};map[g].count++;});
+  var arr=Object.values(map).sort(function(a,b){return b.count-a.count;});
+  return [{name:'All',count:chs.length,icon:'📺'}].concat(arr);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   HOOK: useRemoteControl
-═══════════════════════════════════════════════════════════ */
-function useRemoteControl(handlers, enabled=true) {
-  const hRef = useRef(handlers);
-  const enRef = useRef(enabled);
-  hRef.current = handlers;
-  enRef.current = enabled;
+/* ── Channel logo ───────────────────────────── */
+var GRADS=[['#1a1a1a','#2e2e2e'],['#111','#252525'],['#0d0d0d','#222'],
+           ['#181818','#2c2c2c'],['#0f0f0f','#1e1e1e'],['#141414','#282828']];
+function colFor(name){var h=5381;for(var i=0;i<name.length;i++)h=((h*33)^name.charCodeAt(i))>>>0;return GRADS[h%GRADS.length];}
+function inits(name){var w=(name||'').trim().split(/[\s\-_|]+/).filter(Boolean);if(!w.length)return'CH';if(w.length===1)return w[0].slice(0,2).toUpperCase();return(w[0][0]+w[1][0]).toUpperCase();}
 
-  useEffect(()=>{ registerTizenKeys(); }, []);
-
-  const onKey = useCallback((e) => {
-    if (!enRef.current) return;
-    const h=hRef.current, kc=e.keyCode;
-    h.onAnyKey?.();
-    switch(kc) {
-      case KEYS.UP:           e.preventDefault(); h.onUp?.();          break;
-      case KEYS.DOWN:         e.preventDefault(); h.onDown?.();        break;
-      case KEYS.LEFT:         e.preventDefault(); h.onLeft?.();        break;
-      case KEYS.RIGHT:        e.preventDefault(); h.onRight?.();       break;
-      case KEYS.ENTER:        e.preventDefault(); h.onEnter?.();       break;
-      case KEYS.BACK:         e.preventDefault(); h.onBack?.();        break;
-      case KEYS.EXIT:         e.preventDefault(); h.onExit?.();        break;
-      case KEYS.PLAY:
-      case KEYS.PLAY_PAUSE:   e.preventDefault(); h.onPlayPause?.();   break;
-      case KEYS.PAUSE:        e.preventDefault(); h.onPlayPause?.();   break;
-      case KEYS.STOP:         e.preventDefault(); h.onStop?.();        break;
-      case KEYS.FAST_FORWARD: e.preventDefault(); h.onForward?.();     break;
-      case KEYS.REWIND:       e.preventDefault(); h.onRewind?.();      break;
-      case KEYS.CHANNEL_UP:   e.preventDefault(); h.onChannelUp?.();   break;
-      case KEYS.CHANNEL_DOWN: e.preventDefault(); h.onChannelDown?.(); break;
-      case KEYS.VOLUME_UP:    e.preventDefault(); h.onVolumeUp?.();    break;
-      case KEYS.VOLUME_DOWN:  e.preventDefault(); h.onVolumeDown?.();  break;
-      case KEYS.MUTE:         e.preventDefault(); h.onMute?.();        break;
-      case KEYS.RED:          e.preventDefault(); h.onRed?.();         break;
-      case KEYS.GREEN:        e.preventDefault(); h.onGreen?.();       break;
-      case KEYS.YELLOW:       e.preventDefault(); h.onYellow?.();      break;
-      case KEYS.BLUE:         e.preventDefault(); h.onBlue?.();        break;
-      case KEYS.INFO:         e.preventDefault(); h.onInfo?.();        break;
-      case KEYS.TOOLS:        e.preventDefault(); h.onSettings?.();    break;
-      case KEYS.GUIDE:        e.preventDefault(); h.onGuide?.();       break;
-      default:
-        if (kc>=KEYS.NUM_0 && kc<=KEYS.NUM_9) { e.preventDefault(); h.onDigit?.(kc-KEYS.NUM_0); }
-    }
-  }, []);
-
-  useEffect(()=>{
-    window.addEventListener('keydown', onKey);
-    return ()=>window.removeEventListener('keydown', onKey);
-  }, [onKey]);
+function Logo(props){
+  var src=props.src,name=props.name||'',size=props.size||56,radius=props.radius||12,lazy=props.lazy;
+  var errS=useState(false),err=errS[0],setErr=errS[1];
+  var visS=useState(!lazy),vis=visS[0],setVis=visS[1];
+  var ref=useRef(null);
+  var colors=colFor(name);
+  useEffect(function(){
+    if(!lazy||!ref.current)return;
+    var obs=new IntersectionObserver(function(es){if(es[0].isIntersecting){setVis(true);obs.disconnect();}},{rootMargin:'200px'});
+    obs.observe(ref.current);
+    return function(){obs.disconnect();};
+  },[lazy]);
+  var base={width:size,height:size,borderRadius:radius,flexShrink:0,overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center'};
+  if(!src||err||!vis){
+    return h('div',{ref:ref,style:Object.assign({},base,{background:'linear-gradient(145deg,'+colors[0]+','+colors[1]+')',border:'1px solid rgba(255,255,255,.06)'})},
+      h('span',{style:{color:'rgba(255,255,255,.55)',fontWeight:700,fontSize:Math.round(size*.31),lineHeight:1}},inits(name)));
+  }
+  return h('img',{ref:ref,src:src,alt:name,onError:function(){setErr(true);},
+    style:Object.assign({},base,{objectFit:'contain',background:'#111'}),loading:'lazy'});
 }
 
-/* ═══════════════════════════════════════════════════════════
-   HOOK: useAVPlay
-═══════════════════════════════════════════════════════════ */
-function useAVPlay() {
-  const [playerState, setPlayerState] = useState(PS.NONE);
-  const [isBuffering, setIsBuffering] = useState(false);
-  const [isMuted,     setIsMuted]     = useState(false);
-  const avRef     = useRef(null);
-  const isTizen   = typeof window!=='undefined' && !!window.webapis?.avplay;
+/* ── AVPlay hook ────────────────────────────── */
+function useAVPlay(){
+  var psS=useState(PS.NONE),ps=psS[0],setPS=psS[1];
+  var bufS=useState(false),buf=bufS[0],setBuf=bufS[1];
+  var mutS=useState(false),muted=mutS[0],setMuted=mutS[1];
+  var avRef=useRef(null);
+  var isTizen=!!(window.webapis&&window.webapis.avplay);
+  var BUF_MAP=[2000,5000,10000];
 
-  useEffect(()=>{
-    if (isTizen) avRef.current = window.webapis.avplay;
-    setPlayerState(PS.IDLE);
-    return ()=>_destroy();
-  }, []); // eslint-disable-line
+  useEffect(function(){
+    if(isTizen)avRef.current=window.webapis.avplay;
+    setPS(PS.IDLE);
+    return function(){destroy();};
+  },[]);
 
-  function _destroy() {
-    if (isTizen && avRef.current) {
-      try { const s=avRef.current.getState(); if(s!=='NONE'&&s!=='IDLE'){avRef.current.stop();avRef.current.close();} } catch {}
-    } else { const v=document.getElementById('avplay-video'); if(v){v.pause();v.src='';} }
+  function destroy(){
+    if(isTizen&&avRef.current){try{var s=avRef.current.getState();if(s!=='NONE'&&s!=='IDLE'){avRef.current.stop();avRef.current.close();}}catch(e){}}
+    else{var v=document.getElementById('avv');if(v){v.pause();v.src='';}}
   }
 
-  // Apply AVPlay buffer setting from config
-  function applyBufferSetting(bufIdx) {
-    if (!isTizen || !avRef.current) return;
-    const MS_MAP = [2000, 5000, 10000];
-    const ms = MS_MAP[bufIdx ?? 1] ?? 5000;
-    try { avRef.current.setBufferingParam?.({buffering_time: ms}); } catch {}
-  }
-
-  const playChannel = useCallback(async (url, name) => {
-    if (!url) return;
-    setIsBuffering(true);
-    setPlayerState(PS.LOADING);
-    // Read buffer setting
-    const cfg   = storage.get(CFG_KEY, {});
-    const bufIdx = cfg.bufferSize ?? 1;
-
-    if (isTizen) {
-      try {
-        const ap=avRef.current;
-        const st=ap.getState();
+  function play(url,name){
+    if(!url)return;
+    setBuf(true);setPS(PS.LOADING);
+    var cfg=LS.get(CFG_KEY,{});
+    var bufMs=BUF_MAP[cfg.bufferSize||1]||5000;
+    if(isTizen){
+      try{
+        var ap=avRef.current;
+        var st=ap.getState();
         if(st!=='NONE'&&st!=='IDLE'){ap.stop();ap.close();}
         ap.open(url);
-        applyBufferSetting(bufIdx);
+        try{ap.setBufferingParam&&ap.setBufferingParam({buffering_time:bufMs});}catch(e){}
         ap.setDisplayRect(0,0,1920,1080);
         ap.setDisplayMethod('PLAYER_DISPLAY_MODE_FULL_SCREEN');
         ap.setListener({
-          onbufferingstart:    ()  =>setIsBuffering(true),
-          onbufferingprogress: ()  =>{},
-          onbufferingcomplete: ()  =>setIsBuffering(false),
-          oncurrentplaytime:   ()  =>{},
-          onEvent:             ()  =>{},
-          onerror: (err)=>{
-            console.error('AVPlay',err);
-            setPlayerState(PS.ERROR);
-            setIsBuffering(false);
-          },
-          ondrmevent:        ()=>{},
-          onstreamcompleted: ()=>setPlayerState(PS.IDLE),
+          onbufferingstart:function(){setBuf(true);},
+          onbufferingprogress:function(){},
+          onbufferingcomplete:function(){setBuf(false);},
+          oncurrentplaytime:function(){},
+          onEvent:function(){},
+          onerror:function(e){console.error('AVPlay',e);setPS(PS.ERROR);setBuf(false);},
+          ondrmevent:function(){},
+          onstreamcompleted:function(){setPS(PS.IDLE);}
         });
-        ap.prepare();
-        ap.play();
-        setPlayerState(PS.PLAYING);
-        setIsBuffering(false);
-      } catch(ex) {
-        console.error('AVPlay exception',ex);
-        setPlayerState(PS.ERROR);
-        setIsBuffering(false);
-      }
+        ap.prepare();ap.play();
+        setPS(PS.PLAYING);setBuf(false);
+      }catch(e){console.error('AVPlay exc',e);setPS(PS.ERROR);setBuf(false);}
     } else {
-      const v=document.getElementById('avplay-video');
-      if (!v) return;
-      v.src=url; v.load();
-      v.oncanplay = ()=>{setIsBuffering(false);setPlayerState(PS.PLAYING);};
-      v.onwaiting = ()=>setIsBuffering(true);
-      v.onplaying = ()=>{setIsBuffering(false);setPlayerState(PS.PLAYING);};
-      v.onerror   = ()=>{setPlayerState(PS.ERROR);setIsBuffering(false);};
-      v.muted=isMuted;
-      try { await v.play(); } catch { setPlayerState(PS.ERROR); setIsBuffering(false); }
+      var v2=document.getElementById('avv');
+      if(!v2)return;
+      v2.src=url;v2.load();
+      v2.oncanplay=function(){setBuf(false);setPS(PS.PLAYING);};
+      v2.onwaiting=function(){setBuf(true);};
+      v2.onplaying=function(){setBuf(false);setPS(PS.PLAYING);};
+      v2.onerror=function(){setPS(PS.ERROR);setBuf(false);};
+      v2.muted=muted;
+      v2.play().catch(function(){setPS(PS.ERROR);setBuf(false);});
     }
-  }, [isTizen, isMuted]);
-
-  const togglePause = useCallback(()=>{
-    if (isTizen&&avRef.current) {
-      const s=avRef.current.getState();
-      if(s==='PLAYING'){avRef.current.pause();setPlayerState(PS.PAUSED);}
-      else if(s==='PAUSED'){avRef.current.play();setPlayerState(PS.PLAYING);}
-    } else {
-      const v=document.getElementById('avplay-video');
-      if (!v) return;
-      if(v.paused){v.play();setPlayerState(PS.PLAYING);}else{v.pause();setPlayerState(PS.PAUSED);}
-    }
-  }, [isTizen]);
-
-  const stop = useCallback(()=>{ _destroy(); setPlayerState(PS.IDLE); setIsBuffering(false); }, [isTizen]);
-
-  const toggleMute = useCallback(()=>{
-    setIsMuted(m=>{
-      const next=!m;
-      if(isTizen&&avRef.current){try{avRef.current.setMute(next);}catch{}}
-      else{const v=document.getElementById('avplay-video');if(v)v.muted=next;}
-      return next;
-    });
-  }, [isTizen]);
-
-  return { playerState, isBuffering, isMuted, isTizen, playChannel, togglePause, stop, toggleMute };
-}
-
-/* ═══════════════════════════════════════════════════════════
-   HOOK: useVolume
-═══════════════════════════════════════════════════════════ */
-function useVolume() {
-  const isTizen = typeof window!=='undefined' && !!window.webapis?.tvaudiocontrol;
-  const getSysVol = ()=>{ try{return isTizen?window.webapis.tvaudiocontrol.getVolume():50;}catch{return 50;} };
-  const getSysMute= ()=>{ try{return isTizen?window.webapis.tvaudiocontrol.isMute():false;}catch{return false;} };
-  const [volume, setVol] = useState(getSysVol);
-  const [isMuted, setMuted] = useState(getSysMute);
-  const vRef = useRef(volume);
-
-  const applyVol = useCallback((v)=>{
-    const c=Math.min(100,Math.max(0,v)); vRef.current=c; setVol(c);
-    if(isTizen){try{window.webapis.tvaudiocontrol.setVolume(c);}catch{}}
-    else{const vid=document.getElementById('avplay-video');if(vid)vid.volume=c/100;}
-  }, [isTizen]);
-
-  const volumeUp   = useCallback(()=>applyVol(vRef.current+5),[applyVol]);
-  const volumeDown = useCallback(()=>applyVol(vRef.current-5),[applyVol]);
-  const toggleMute = useCallback(()=>{
-    setMuted(m=>{const next=!m;
-      if(isTizen){try{window.webapis.tvaudiocontrol.setMute(next);}catch{}}
-      else{const v=document.getElementById('avplay-video');if(v)v.muted=next;}
-      return next;
-    });
-  },[isTizen]);
-
-  return {volume, isMuted, volumeUp, volumeDown, toggleMute};
-}
-
-/* ═══════════════════════════════════════════════════════════
-   HOOK: usePlaylist (with Web Worker + IndexedDB)
-═══════════════════════════════════════════════════════════ */
-function usePlaylist() {
-  const [activeSourceId, setActiveSourceIdState] = useState(()=>{
-    const cfg=storage.get(CFG_KEY,{}); return cfg.playlistSource??DEFAULT_SOURCE_ID;
-  });
-  const activeIdRef = useRef(activeSourceId);
-
-  const [allChannels,  setAllChannels]  = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [loadProgress, setLoadProgress] = useState(0);
-  const [loadStatus,   setLoadStatus]   = useState('Loading…');
-  const [error,        setError]        = useState(null);
-
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchQuery,      setSearchQuery]      = useState('');
-  const [currentChannelIndex, setCurrentChannelIndex] = useState(-1);
-
-  const workerRef = useRef(null);
-
-  const setActiveSourceId = useCallback((id)=>{
-    activeIdRef.current=id;
-    setActiveSourceIdState(id);
-    const cfg=storage.get(CFG_KEY,{});
-    storage.set(CFG_KEY,{...cfg,playlistSource:id});
-    setSelectedCategory('All');
-    setCurrentChannelIndex(-1);
-    setSearchQuery('');
-  },[]);
-
-  const loadPlaylist = useCallback(async(forceRefresh=false)=>{
-    const sourceId = activeIdRef.current;
-    const source   = getSourceById(sourceId);
-    setLoading(true); setError(null); setLoadProgress(0); setLoadStatus('Checking cache…');
-
-    const cfg    = storage.get(CFG_KEY,{});
-    const cacheOn= cfg.cacheOn!==false;
-    const ttlMs  = TTL_MAP[cfg.cacheTTL??1]??TTL_MAP[1];
-
-    // Check IndexedDB cache
-    if (!forceRefresh && cacheOn) {
-      const cached = await idbGet('playlists', sourceId);
-      if (cached && Array.isArray(cached.channels) && cached.channels.length>0) {
-        const age = Date.now() - (cached.timestamp||0);
-        if (age < ttlMs) {
-          setAllChannels(cached.channels);
-          setLoadProgress(100);
-          setLoadStatus(`${cached.channels.length} channels (cached)`);
-          setLoading(false);
-          return;
-        }
-      }
-    }
-
-    // Try Web Worker for fetch+parse
-    if (typeof Worker !== 'undefined') {
-      try {
-        if (workerRef.current) workerRef.current.terminate();
-        const worker = new Worker('./m3u-worker.js');
-        workerRef.current = worker;
-        setLoadStatus(`Fetching ${source.label}…`);
-        setLoadProgress(5);
-
-        await new Promise((resolve, reject)=>{
-          worker.onmessage = async({data})=>{
-            if (data.type==='PROGRESS') {
-              setLoadProgress(data.pct);
-              setLoadStatus(data.status);
-            } else if (data.type==='RESULT') {
-              const channels = data.channels;
-              if (channels.length===0) { reject(new Error('No channels found')); return; }
-              if (cacheOn) {
-                await idbPut('playlists',{id:sourceId,channels,timestamp:Date.now(),ttlMs});
-              }
-              setAllChannels(channels);
-              setLoadProgress(100);
-              setLoadStatus(`${channels.length} channels ready`);
-              setLoading(false);
-              resolve();
-            } else if (data.type==='ERROR') {
-              reject(new Error(data.message));
-            }
-          };
-          worker.onerror = e => reject(e);
-          worker.postMessage({type:'FETCH_AND_PARSE', id:sourceId, url:source.url});
-        });
-        return;
-      } catch(workerErr) {
-        console.warn('[Playlist] Worker failed, falling back:', workerErr);
-      }
-    }
-
-    // Fallback: main-thread fetch+parse
-    setLoadStatus(`Fetching ${source.label}…`); setLoadProgress(15);
-    const content = await fetchPlaylist(source.url);
-    if (!content) { setError(`Could not load "${source.label}".`); setLoading(false); return; }
-    setLoadProgress(65); setLoadStatus('Parsing…');
-    const channels = parseM3USync(content);
-    if (channels.length===0) { setError(`No channels in "${source.label}".`); setLoading(false); return; }
-    if (cacheOn) await idbPut('playlists',{id:sourceId,channels,timestamp:Date.now(),ttlMs});
-    setAllChannels(channels); setLoadProgress(100); setLoadStatus(`${channels.length} channels ready`); setLoading(false);
-  }, []);
-
-  useEffect(()=>{ loadPlaylist(false); }, [activeSourceId, loadPlaylist]);
-
-  // Cleanup worker on unmount
-  useEffect(()=>()=>{ workerRef.current?.terminate(); }, []);
-
-  const refreshPlaylist = useCallback(()=>loadPlaylist(true), [loadPlaylist]);
-
-  const categories = useMemo(()=>extractCategories(allChannels), [allChannels]);
-
-  // Favorites
-  const [favorites, setFavorites] = useState(()=>storage.get(FAVORITES_KEY,[]));
-  const toggleFavorite = useCallback((chId)=>{
-    setFavorites(prev=>{
-      const next = prev.includes(chId) ? prev.filter(x=>x!==chId) : [...prev,chId];
-      storage.set(FAVORITES_KEY,next);
-      return next;
-    });
-  },[]);
-
-  // Channel overrides (custom name/logo)
-  const [overrides, setOverrides] = useState(()=>storage.get(OVERRIDES_KEY,{}));
-  const saveOverride = useCallback((chId, data)=>{
-    setOverrides(prev=>{ const n={...prev,[chId]:data}; storage.set(OVERRIDES_KEY,n); return n; });
-  },[]);
-
-  // Compute categories including ⭐ Favorites
-  const categoriesWithFavs = useMemo(()=>{
-    const favChannels = allChannels.filter(ch=>favorites.includes(ch.id));
-    if (favChannels.length===0) return categories;
-    return [{name:'⭐ Favorites',count:favChannels.length,icon:'⭐'}, ...categories];
-  },[categories, allChannels, favorites]);
-
-  const filteredChannels = useMemo(()=>{
-    let chs;
-    if (selectedCategory==='⭐ Favorites') {
-      chs = allChannels.filter(ch=>favorites.includes(ch.id));
-    } else {
-      chs = filterByCategory(allChannels, selectedCategory);
-    }
-    if (searchQuery) chs = searchChannels(chs, searchQuery);
-    // Apply overrides
-    return chs.map(ch=>{
-      const ov = overrides[ch.id];
-      if (!ov) return ch;
-      return {...ch, name:ov.name||ch.name, logo:ov.logo||ch.logo};
-    });
-  },[allChannels, selectedCategory, searchQuery, overrides, favorites]);
-
-  const currentChannel = useMemo(()=>{
-    if (currentChannelIndex<0||currentChannelIndex>=filteredChannels.length) return null;
-    return filteredChannels[currentChannelIndex]??null;
-  },[filteredChannels,currentChannelIndex]);
-
-  const selectChannel = useCallback((index)=>setCurrentChannelIndex(index),[]);
-
-  return {
-    allChannels, filteredChannels, categories:categoriesWithFavs,
-    loading, loadProgress, loadStatus, error,
-    selectedCategory, setSelectedCategory,
-    searchQuery, setSearchQuery,
-    currentChannel, currentChannelIndex, selectChannel,
-    refreshPlaylist,
-    activeSourceId, setActiveSourceId,
-    favorites, toggleFavorite,
-    overrides, saveOverride,
-  };
-}
-
-/* ═══════════════════════════════════════════════════════════
-   CHANNEL LOGO COMPONENT
-═══════════════════════════════════════════════════════════ */
-const GRADS=[['#1a1a1a','#2e2e2e'],['#111','#252525'],['#0d0d0d','#222'],['#181818','#2c2c2c'],['#0f0f0f','#1e1e1e'],['#141414','#282828'],['#1c1c1c','#303030'],['#0a0a0a','#1a1a1a'],['#161616','#2a2a2a'],['#121212','#242424']];
-function colorFor(name=''){let h=5381;for(let i=0;i<name.length;i++)h=((h*33)^name.charCodeAt(i))>>>0;return GRADS[h%GRADS.length];}
-function initials(name=''){const c=name.trim();if(!c)return'CH';const w=c.split(/[\s\-_|]+/).filter(Boolean);if(w.length===1)return w[0].slice(0,2).toUpperCase();return(w[0][0]+w[1][0]).toUpperCase();}
-
-function ChannelLogo({src,name='',size=56,radius=12,className='',lazy=false}) {
-  const [err,setErr]=useState(false);
-  const [bg,fg]=colorFor(name);
-  const imgRef=useRef(null);
-  // Intersection Observer for lazy loading
-  const [visible,setVisible]=useState(!lazy);
-  useEffect(()=>{
-    if (!lazy||!imgRef.current) return;
-    const obs=new IntersectionObserver(([e])=>{if(e.isIntersecting){setVisible(true);obs.disconnect();}},{rootMargin:'200px'});
-    obs.observe(imgRef.current);
-    return()=>obs.disconnect();
-  },[lazy]);
-  const base={width:size,height:size,borderRadius:radius,flexShrink:0,overflow:'hidden'};
-  if (!src||err||!visible) {
-    return (<div ref={imgRef} style={{...base,background:`linear-gradient(145deg,${bg},${fg})`,border:'1px solid rgba(255,255,255,.06)',display:'flex',alignItems:'center',justifyContent:'center'}} className={className}>
-      <span style={{color:'rgba(255,255,255,.55)',fontWeight:700,fontSize:Math.round(size*.31),letterSpacing:'-.02em',fontFamily:'inherit',lineHeight:1,userSelect:'none'}}>{initials(name)}</span>
-    </div>);
   }
-  return (<img ref={imgRef} src={src} alt={name} style={{...base,objectFit:'contain',background:'#111'}} className={className} onError={()=>setErr(true)} loading="lazy"/>);
+
+  function togglePause(){
+    if(isTizen&&avRef.current){var s=avRef.current.getState();if(s==='PLAYING'){avRef.current.pause();setPS(PS.PAUSED);}else if(s==='PAUSED'){avRef.current.play();setPS(PS.PLAYING);}}
+    else{var v=document.getElementById('avv');if(v){if(v.paused){v.play();setPS(PS.PLAYING);}else{v.pause();setPS(PS.PAUSED);}}}
+  }
+  function stop(){destroy();setPS(PS.IDLE);setBuf(false);}
+  function toggleMute(){setMuted(function(m){var n=!m;if(isTizen&&avRef.current){try{avRef.current.setMute(n);}catch(e){}}else{var v=document.getElementById('avv');if(v)v.muted=n;}return n;});}
+
+  return {ps:ps,buf:buf,muted:muted,isTizen:isTizen,play:play,togglePause:togglePause,stop:stop,toggleMute:toggleMute};
 }
 
-/* ═══════════════════════════════════════════════════════════
-   CHANNEL CARD (with favorite star + long-press for edit)
-═══════════════════════════════════════════════════════════ */
-const CARD_W=252, CARD_H=290, GAP=28, STEP=CARD_W+GAP, RING_X=960, RING_L=RING_X-CARD_W/2, RING_PAD=5;
+/* ── Volume hook ────────────────────────────── */
+function useVolume(){
+  var isTizen=!!(window.webapis&&window.webapis.tvaudiocontrol);
+  var getV=function(){try{return isTizen?window.webapis.tvaudiocontrol.getVolume():50;}catch(e){return 50;}};
+  var vS=useState(getV),vol=vS[0],setVol=vS[1];
+  var mS=useState(false),mut=mS[0],setMut=mS[1];
+  var vRef=useRef(vol);
 
-function ChannelCard({channel, index, isPlaying, isFocused, onSelect, isFav, onToggleFav, onEditRequest}) {
-  const lpTimer = useRef(null);
-  const down = ()=>{ lpTimer.current = setTimeout(()=>onEditRequest?.(index), 800); };
-  const up   = ()=>clearTimeout(lpTimer.current);
-
-  return (
-    <button
-      onClick={()=>onSelect(index)}
-      onMouseDown={down} onTouchStart={down}
-      onMouseUp={up} onTouchEnd={up} onMouseLeave={up}
-      style={{flexShrink:0,width:CARD_W,height:CARD_H,borderRadius:18,cursor:'pointer',
-        display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-        gap:16,padding:'0 18px',position:'relative',overflow:'hidden',
-        background:isPlaying?'rgba(255,255,255,.16)':isFocused?'rgba(255,255,255,.10)':'rgba(255,255,255,.04)',
-        border:isPlaying?'1.5px solid rgba(255,255,255,.38)':'1.5px solid rgba(255,255,255,.07)',
-        transition:'background .14s',
-      }}
-    >
-      {isPlaying&&<div style={{position:'absolute',top:0,left:'15%',right:'15%',height:2,background:'linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent)',borderRadius:99}}/>}
-      {/* Favorite star */}
-      <button
-        onClick={e=>{e.stopPropagation();onToggleFav?.(channel.id);}}
-        style={{position:'absolute',top:8,right:10,background:'none',border:'none',cursor:'pointer',
-          color:isFav?'#FFD60A':'rgba(255,255,255,.2)',fontSize:18,lineHeight:1,zIndex:5,
-          transition:'color .15s',padding:4,
-        }}>★</button>
-      <div style={{position:'relative',flexShrink:0}}>
-        <ChannelLogo src={channel.logo} name={channel.name} size={100} radius={16} lazy={true}/>
-        {isPlaying&&<div style={{position:'absolute',bottom:-9,left:'50%',transform:'translateX(-50%)',display:'flex',alignItems:'center',gap:5,background:'rgba(255,255,255,.95)',borderRadius:99,padding:'3px 10px',whiteSpace:'nowrap'}}>
-          <div className="blink" style={{width:6,height:6,borderRadius:'50%',background:'#FF3B30'}}/>
-          <span style={{color:'#000',fontSize:10,fontWeight:800,letterSpacing:'.1em'}}>LIVE</span>
-        </div>}
-      </div>
-      <p style={{color:isPlaying?'#fff':'rgba(255,255,255,.72)',fontSize:17,fontWeight:isPlaying?700:500,lineHeight:1.3,textAlign:'center',overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',letterSpacing:'-.01em',width:'100%'}}>{channel.name}</p>
-      <p style={{color:'rgba(255,255,255,.22)',fontSize:13,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:CARD_W-36}}>{channel.group||'General'}</p>
-    </button>
-  );
+  function applyVol(v){
+    var c=Math.min(100,Math.max(0,v));vRef.current=c;setVol(c);
+    if(isTizen){try{window.webapis.tvaudiocontrol.setVolume(c);}catch(e){}}
+    else{var vid=document.getElementById('avv');if(vid)vid.volume=c/100;}
+  }
+  function volUp(){applyVol(vRef.current+5);}
+  function volDown(){applyVol(vRef.current-5);}
+  function toggleMute(){setMut(function(m){var n=!m;if(isTizen){try{window.webapis.tvaudiocontrol.setMute(n);}catch(e){}}else{var v=document.getElementById('avv');if(v)v.muted=n;}return n;});}
+  return {vol:vol,mut:mut,volUp:volUp,volDown:volDown,toggleMute:toggleMute};
 }
 
-/* ═══════════════════════════════════════════════════════════
-   CHANNEL STRIP
-═══════════════════════════════════════════════════════════ */
-function ChannelStrip({channels,currentIndex,focusedIndex,onSelect,favorites,onToggleFav,onEditRequest}) {
-  const trackRef=useRef(null);
-  useLayoutEffect(()=>{
-    if (!trackRef.current) return;
-    const tx=RING_L-focusedIndex*STEP;
-    trackRef.current.style.transform=`translateX(${tx}px)`;
-  });
-  if (!channels.length) return null;
-  const STRIP_H=CARD_H+36+16;
-  return (
-    <div style={{position:'relative',height:STRIP_H,flexShrink:0,overflow:'hidden',
-      background:'linear-gradient(to top,rgba(0,0,0,.96) 0%,rgba(0,0,0,.7) 55%,transparent 100%)'}}>
-      <div style={{position:'absolute',inset:0,zIndex:10,pointerEvents:'none',
-        background:'linear-gradient(to right,rgba(0,0,0,.9) 0%,transparent 200px,transparent calc(100% - 200px),rgba(0,0,0,.9) 100%)'}}/>
-      <div style={{position:'absolute',left:RING_L-RING_PAD,top:36-RING_PAD,width:CARD_W+RING_PAD*2,height:CARD_H+RING_PAD*2,borderRadius:22,border:'2.5px solid rgba(255,255,255,.88)',boxShadow:'0 0 0 1px rgba(255,255,255,.07),0 0 32px rgba(255,255,255,.10)',zIndex:20,pointerEvents:'none'}}/>
-      <div ref={trackRef} style={{position:'absolute',top:36,left:0,display:'flex',gap:GAP,transition:'transform .22s cubic-bezier(.25,1,.5,1)',willChange:'transform'}}>
-        {channels.map((ch,idx)=>(
-          <ChannelCard key={ch.id||`c${idx}`} channel={ch} index={idx}
-            isPlaying={idx===currentIndex} isFocused={idx===focusedIndex}
-            onSelect={onSelect}
-            isFav={favorites?.includes(ch.id)}
-            onToggleFav={onToggleFav}
-            onEditRequest={onEditRequest}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
+/* ── Remote control ────────────────────────── */
+var KEYS={UP:38,DOWN:40,LEFT:37,RIGHT:39,ENTER:13,BACK:10009,EXIT:10182,
+  PLAY:415,PAUSE:19,PLAY_PAUSE:10252,STOP:413,FF:417,RW:412,
+  N0:48,N9:57,RED:403,GREEN:404,YELLOW:405,BLUE:406,
+  CHU:427,CHD:428,VU:447,VD:448,MUTE:449,INFO:457,TOOLS:10135,GUIDE:458};
+var TKEYS=['MediaPlayPause','MediaPlay','MediaPause','MediaStop','MediaFastForward','MediaRewind',
+  'ChannelUp','ChannelDown','VolumeUp','VolumeDown','VolumeMute',
+  'ColorF0Red','ColorF1Green','ColorF2Yellow','ColorF3Blue','Exit','Tools','Guide','Info','Return'];
 
-/* ═══════════════════════════════════════════════════════════
-   CATEGORY ROW
-═══════════════════════════════════════════════════════════ */
-function CategoryRow({categories,selectedCategory,onSelect,focusedIdx}) {
-  const rowRef=useRef(null), actRef=useRef(null);
-  useLayoutEffect(()=>{
-    if (!rowRef.current||!actRef.current) return;
-    const c=rowRef.current,el=actRef.current;
-    c.scrollLeft=el.offsetLeft-c.clientWidth/2+el.offsetWidth/2;
-  },[selectedCategory]);
-  return (
-    <div className="slide-up" style={{position:'relative',height:68,flexShrink:0}}>
-      <div style={{position:'absolute',inset:0,zIndex:1,pointerEvents:'none',background:'linear-gradient(to right,rgba(0,0,0,.8) 0%,transparent 130px,transparent calc(100% - 130px),rgba(0,0,0,.8) 100%)'}}/>
-      <div ref={rowRef} style={{display:'flex',alignItems:'center',gap:12,height:'100%',overflowX:'auto',scrollbarWidth:'none',padding:'0 130px',position:'relative',zIndex:2}}>
-        {categories.map((cat,idx)=>{
-          const isActive=cat.name===selectedCategory, isFoc=idx===focusedIdx;
-          return (
-            <button key={cat.name} ref={isActive?actRef:null} onClick={()=>onSelect(cat.name)}
-              style={{flexShrink:0,height:42,padding:'0 22px',borderRadius:99,
-                border:`1.5px solid ${(isActive||isFoc)?'rgba(255,255,255,.55)':'rgba(255,255,255,.1)'}`,
-                background:(isActive||isFoc)?'rgba(255,255,255,.13)':'rgba(255,255,255,.04)',
-                color:(isActive||isFoc)?'#fff':'rgba(255,255,255,.38)',
-                fontSize:15,fontWeight:isActive?600:500,cursor:'pointer',
-                display:'flex',alignItems:'center',gap:8,whiteSpace:'nowrap',transition:'all .15s',
-              }}>
-              <span style={{fontSize:16}}>{cat.icon}</span>{cat.name}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+function regKeys(){try{if(window.tizen&&window.tizen.tvinputdevice)TKEYS.forEach(function(k){try{window.tizen.tvinputdevice.registerKey(k);}catch(e){}});}catch(e){}}
 
-/* ═══════════════════════════════════════════════════════════
-   HINT BAR
-═══════════════════════════════════════════════════════════ */
-function HintBar({zone}) {
-  const hints = zone==='cats'
-    ? [{key:'← →',label:'Category'},{key:'↓',label:'Channels'},{key:'OK',label:'Select'},{key:'BACK',label:'Cancel'}]
-    : [{key:'← →',label:'Browse'},{key:'OK',label:'Play'},{key:'↑',label:'Categories'},{key:'CH±',label:'Prev/Next'},
-       {key:'0-9',label:'Ch.Number'},{key:'★',label:'Favorite'},
-       {key:'🟥',label:'Overlay',color:'#FF453A'},{key:'🟩',label:'Search',color:'#30D158'},{key:'🟦',label:'Settings',color:'#0A84FF'}];
-  return (
-    <div style={{height:52,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',gap:22,
-      background:'linear-gradient(to top,rgba(0,0,0,.6) 0%,transparent 100%)'}}>
-      {hints.map(({key,label,color})=>(
-        <div key={key} style={{display:'flex',alignItems:'center',gap:7}}>
-          <kbd style={{color:color||'rgba(255,255,255,.82)',fontSize:12,fontWeight:700,background:'rgba(255,255,255,.08)',border:'1px solid rgba(255,255,255,.14)',borderRadius:6,padding:'3px 9px',fontFamily:'inherit',whiteSpace:'nowrap'}}>{key}</kbd>
-          <span style={{color:'rgba(255,255,255,.28)',fontSize:12}}>{label}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   TOP BAR
-═══════════════════════════════════════════════════════════ */
-function TopBar({currentChannel,onSettings,onSearch,playerState,isMuted,onToggleMute,onTogglePause,clock}) {
-  const isPlaying=playerState===PS.PLAYING, isPaused=playerState===PS.PAUSED;
-  return (
-    <div style={{height:80,flexShrink:0,display:'flex',alignItems:'center',padding:'0 60px',
-      background:'linear-gradient(to bottom,rgba(0,0,0,.92) 0%,rgba(0,0,0,0) 100%)',gap:0}}>
-      <div style={{display:'flex',alignItems:'center',gap:0,flexShrink:0}}>
-        <span style={{color:'#fff',fontWeight:900,fontSize:34,letterSpacing:'-.05em',lineHeight:1}}>TV</span>
-        <span style={{color:'rgba(255,255,255,.85)',fontWeight:300,fontSize:36,letterSpacing:'-.02em',lineHeight:1,marginTop:-2}}>+</span>
-      </div>
-      {currentChannel&&<div style={{width:1,height:26,background:'rgba(255,255,255,.15)',margin:'0 28px',flexShrink:0}}/>}
-      {currentChannel?(
-        <div style={{display:'flex',alignItems:'center',gap:12,flex:1,minWidth:0}}>
-          <div className="blink" style={{width:8,height:8,borderRadius:'50%',background:'#FF3B30',flexShrink:0}}/>
-          <span style={{color:'rgba(255,255,255,.42)',fontSize:11,fontWeight:700,letterSpacing:'.1em',flexShrink:0}}>LIVE</span>
-          <ChannelLogo src={currentChannel.logo} name={currentChannel.name} size={32} radius={7}/>
-          <span style={{color:'rgba(255,255,255,.88)',fontSize:18,fontWeight:600,letterSpacing:'-.015em',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{currentChannel.name}</span>
-          {currentChannel.group&&<span style={{color:'rgba(255,255,255,.25)',fontSize:16,fontWeight:400,flexShrink:0}}>{currentChannel.group}</span>}
-        </div>
-      ):<div style={{flex:1}}/>}
-      <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-        <IBtn onClick={onSearch} title="Search (🟢)"><SearchIcon/></IBtn>
-        <IBtn onClick={onToggleMute} active={isMuted} title="Mute">{isMuted?<MuteIcon/>:<VolumeIcon/>}</IBtn>
-        {(isPlaying||isPaused)&&<IBtn onClick={onTogglePause} title="Play/Pause">{isPaused?<PlayIcon/>:<PauseIcon/>}</IBtn>}
-        <IBtn onClick={onSettings} title="Settings (🔵)"><SettingsIcon/></IBtn>
-        <div style={{marginLeft:16,color:'rgba(255,255,255,.4)',fontSize:17,fontWeight:500,fontVariantNumeric:'tabular-nums',letterSpacing:'-.01em',flexShrink:0}}>{clock}</div>
-      </div>
-    </div>
-  );
-}
-function IBtn({onClick,children,active,title}) {
-  return (<button onClick={onClick} title={title} style={{width:42,height:42,borderRadius:11,flexShrink:0,background:active?'rgba(255,255,255,.2)':'rgba(255,255,255,.06)',border:`1.5px solid ${active?'rgba(255,255,255,.4)':'rgba(255,255,255,.09)'}`,color:active?'#fff':'rgba(255,255,255,.72)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',transition:'background .12s'}}>{children}</button>);
-}
-function SearchIcon(){return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>;}
-function MuteIcon(){return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>;}
-function VolumeIcon(){return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>;}
-function PlayIcon(){return <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>;}
-function PauseIcon(){return <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>;}
-function SettingsIcon(){return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;}
-
-/* ═══════════════════════════════════════════════════════════
-   VOLUME HUD
-═══════════════════════════════════════════════════════════ */
-function VolumeHUD({volume,isMuted,visible}) {
-  if (!visible) return null;
-  const pct=Math.min(100,Math.max(0,volume)), bars=20;
-  return (
-    <div className="fade-in" style={{position:'absolute',bottom:420,left:'50%',transform:'translateX(-50%)',zIndex:30,display:'flex',flexDirection:'column',alignItems:'center',gap:10,background:'rgba(0,0,0,.75)',border:'1px solid rgba(255,255,255,.12)',borderRadius:16,padding:'14px 28px',backdropFilter:'blur(12px)',WebkitBackdropFilter:'blur(12px)'}}>
-      <div style={{display:'flex',alignItems:'center',gap:12}}>
-        {isMuted?<MuteIcon/>:<VolumeIcon/>}
-        <div style={{display:'flex',alignItems:'flex-end',gap:3,height:24}}>
-          {Array.from({length:bars},(_,i)=>{const threshold=((i+1)/bars)*100;const active=!isMuted&&pct>=threshold;return(<div key={i} style={{width:4,height:8+(i/bars)*16,borderRadius:2,background:active?'rgba(255,255,255,.85)':'rgba(255,255,255,.12)',transition:'background .1s'}}/>);})}</div>
-        <span style={{color:'rgba(255,255,255,.7)',fontSize:16,fontWeight:600,fontVariantNumeric:'tabular-nums',minWidth:36,textAlign:'right'}}>{isMuted?'🔇':`${pct}`}</span>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   CHANNEL NUMBER OSD (direct number entry)
-═══════════════════════════════════════════════════════════ */
-function ChannelNumberOSD({digits,total}) {
-  if (!digits) return null;
-  const num = parseInt(digits,10);
-  return (
-    <div className="pop-in" style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:45,
-      background:'rgba(0,0,0,.82)',border:'2px solid rgba(255,255,255,.28)',borderRadius:24,
-      padding:'28px 52px',textAlign:'center',backdropFilter:'blur(18px)',WebkitBackdropFilter:'blur(18px)'}}>
-      <div style={{color:'#fff',fontSize:72,fontWeight:900,letterSpacing:'-.04em',lineHeight:1,fontVariantNumeric:'tabular-nums'}}>{digits}</div>
-      <div style={{color:'rgba(255,255,255,.35)',fontSize:18,marginTop:10}}>of {total} channels</div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   SEARCH OVERLAY
-═══════════════════════════════════════════════════════════ */
-function SearchOverlay({isOpen,query,onQueryChange,onClose,resultCount}) {
-  if (!isOpen) return null;
-  return (
-    <>
-      <div onClick={onClose} style={{position:'absolute',inset:0,zIndex:55,background:'rgba(0,0,0,.7)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)'}}/>
-      <div className="slide-up" style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:56,width:760,display:'flex',flexDirection:'column',gap:20}}>
-        <div style={{display:'flex',alignItems:'center',gap:20,background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.2)',borderRadius:20,padding:'20px 28px',boxShadow:'0 24px 80px rgba(0,0,0,.6)'}}>
-          <SearchIcon/>
-          <input autoFocus type="text" value={query} onChange={e=>onQueryChange(e.target.value)}
-            placeholder="Search channels…" style={{flex:1,background:'none',border:'none',outline:'none',color:'#fff',fontSize:26,fontWeight:500,fontFamily:'inherit',letterSpacing:'-.02em'}}/>
-          {query&&<button onClick={()=>onQueryChange('')} style={{background:'rgba(255,255,255,.1)',border:'none',color:'rgba(255,255,255,.6)',cursor:'pointer',width:32,height:32,borderRadius:'50%',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center'}}>×</button>}
-        </div>
-        <p style={{color:'rgba(255,255,255,.35)',fontSize:16,textAlign:'center',fontWeight:500}}>
-          {query?`${resultCount} channel${resultCount!==1?'s':''} found`:'Type to search · BACK or 🟩 to close'}
-        </p>
-      </div>
-    </>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   CHANNEL EDIT MODAL (rename + custom logo)
-═══════════════════════════════════════════════════════════ */
-function ChannelEditModal({channel, onSave, onCancel}) {
-  const [name, setName] = useState(channel?.name||'');
-  const [logo, setLogo] = useState(channel?.logo||'');
-  if (!channel) return null;
-  return (
-    <>
-      <div onClick={onCancel} style={{position:'absolute',inset:0,zIndex:75,background:'rgba(0,0,0,.75)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)'}}/>
-      <div className="slide-up" style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:76,width:680,background:'#111',borderRadius:24,border:'1px solid rgba(255,255,255,.1)',padding:40,boxShadow:'0 40px 100px rgba(0,0,0,.9)'}}>
-        <h2 style={{color:'#fff',fontSize:26,fontWeight:800,letterSpacing:'-.03em',marginBottom:28}}>Edit Channel</h2>
-        <div style={{display:'flex',alignItems:'center',gap:20,marginBottom:32}}>
-          <ChannelLogo src={logo||channel.logo} name={name||channel.name} size={72} radius={14}/>
-          <div>
-            <p style={{color:'rgba(255,255,255,.5)',fontSize:14}}>Original: {channel.name}</p>
-            <p style={{color:'rgba(255,255,255,.3)',fontSize:12,marginTop:4}}>{channel.group}</p>
-          </div>
-        </div>
-        <label style={{display:'block',marginBottom:20}}>
-          <span style={{color:'rgba(255,255,255,.5)',fontSize:14,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',display:'block',marginBottom:8}}>Channel Name</span>
-          <input value={name} onChange={e=>setName(e.target.value)}
-            style={{width:'100%',background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.15)',borderRadius:12,padding:'14px 18px',color:'#fff',fontSize:18,fontFamily:'inherit',outline:'none'}}
-            placeholder={channel.name}/>
-        </label>
-        <label style={{display:'block',marginBottom:32}}>
-          <span style={{color:'rgba(255,255,255,.5)',fontSize:14,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',display:'block',marginBottom:8}}>Logo URL</span>
-          <input value={logo} onChange={e=>setLogo(e.target.value)}
-            style={{width:'100%',background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.15)',borderRadius:12,padding:'14px 18px',color:'#fff',fontSize:14,fontFamily:'inherit',outline:'none'}}
-            placeholder="https://…/logo.png"/>
-        </label>
-        <div style={{display:'flex',gap:14,justifyContent:'flex-end'}}>
-          <button onClick={onCancel} style={{padding:'14px 32px',borderRadius:12,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',color:'rgba(255,255,255,.6)',fontSize:16,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Cancel</button>
-          <button onClick={()=>onSave({name:name||channel.name,logo:logo||channel.logo})}
-            style={{padding:'14px 32px',borderRadius:12,background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.25)',color:'#fff',fontSize:16,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Save</button>
-        </div>
-      </div>
-    </>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   SETTINGS PANEL
-═══════════════════════════════════════════════════════════ */
-const BUFFER_SIZE_LABELS = ['Small (2s)','Medium (5s)','Large (10s)'];
-const SETTINGS_TABS = ['Playback','Display','Playlist','Custom M3U','About'];
-export const SETTINGS_TAB_COUNT = SETTINGS_TABS.length;
-export function SETTINGS_ITEM_COUNT(tabIdx) {
-  if (tabIdx===0) return 4; // Playback
-  if (tabIdx===1) return 3; // Display
-  if (tabIdx===2) return getAllSources().length + 3; // sources + cache items
-  if (tabIdx===3) return 4; // custom M3U form rows + actions
-  if (tabIdx===4) return 4; // About
-  return 0;
-}
-
-function SettingsPanel({isOpen,onClose,onRefreshPlaylist,focusedTab,focusedItem,onTabChange,onItemAction,activeSourceId,onSourceChange}) {
-  const [cfg,setCfg]=useState(()=>storage.get(CFG_KEY,{bufferSize:1,cacheOn:true,cacheTTL:1,autoplay:true,muteOnStart:false,aspectRatio:0,showBug:true,hintBar:true}));
-  const [customSrcs,setCustomSrcs]=useState(()=>storage.get(CUSTOM_SRCS_KEY,[]));
-  const [newName,setNewName]=useState('');
-  const [newUrl,setNewUrl]=useState('');
-
-  const saveCfg = next=>{setCfg(next);storage.set(CFG_KEY,next);};
-  const set = (k,v)=>saveCfg({...cfg,[k]:v});
-
-  const allSrc = getAllSources();
-
-  useEffect(()=>{
-    if (!onItemAction) return;
-    onItemAction.current = (tabIdx,itemIdx)=>{
-      if (tabIdx===0) { // Playback
-        const keys=['autoplay','muteOnStart','bufferSize','quality'];
-        const item=keys[itemIdx];
-        if (item==='autoplay'||item==='muteOnStart') set(item,!cfg[item]);
-        if (item==='bufferSize') set('bufferSize',((cfg.bufferSize??1)+1)%3);
-        if (item==='quality') set('quality',((cfg.quality??0)+1)%4);
-      } else if (tabIdx===1) { // Display
-        const keys=['aspectRatio','showBug','hintBar'];
-        const item=keys[itemIdx];
-        if (item==='aspectRatio') set('aspectRatio',((cfg.aspectRatio??0)+1)%4);
-        else set(item,!cfg[item]);
-      } else if (tabIdx===2) { // Playlist
-        if (itemIdx<allSrc.length) {
-          const src=allSrc[itemIdx];
-          if (src&&src.id!==activeSourceId) onSourceChange?.(src.id);
-          return;
-        }
-        const si=itemIdx-allSrc.length;
-        if (si===0) set('cacheOn',!cfg.cacheOn);
-        if (si===1) set('cacheTTL',((cfg.cacheTTL??1)+1)%4);
-        if (si===2) { onRefreshPlaylist?.(); onClose?.(); }
-      } else if (tabIdx===3) { // Custom M3U — handled by buttons
-      } else if (tabIdx===4) { /* About — no actions */ }
-    };
-  }); // runs every render — cfg fresh
-
-  const addCustomSource = ()=>{
-    if (!newName.trim()||!newUrl.trim()) return;
-    const id=`custom_${Date.now()}`;
-    const src={id,label:newName.trim(),desc:'Custom M3U playlist',url:newUrl.trim(),builtIn:false};
-    const next=[...customSrcs,src];
-    setCustomSrcs(next);
-    storage.set(CUSTOM_SRCS_KEY,next);
-    setNewName(''); setNewUrl('');
-  };
-  const removeCustomSource = (srcId)=>{
-    const next=customSrcs.filter(s=>s.id!==srcId);
-    setCustomSrcs(next);
-    storage.set(CUSTOM_SRCS_KEY,next);
-    if (activeSourceId===srcId) onSourceChange?.(DEFAULT_SOURCE_ID);
-  };
-
-  if (!isOpen) return null;
-
-  const tabLabel=SETTINGS_TABS[focusedTab]||'Playback';
-
-  return (
-    <>
-      <div onClick={onClose} style={{position:'absolute',inset:0,zIndex:60,background:'rgba(0,0,0,.62)',backdropFilter:'blur(8px)',WebkitBackdropFilter:'blur(8px)'}}/>
-      <div className="slide-right" style={{position:'absolute',top:0,right:0,bottom:0,zIndex:70,width:700,background:'#0C0C0C',borderLeft:'1px solid rgba(255,255,255,.07)',display:'flex',flexDirection:'column',boxShadow:'-60px 0 120px rgba(0,0,0,.88)'}}>
-        <div style={{height:76,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 32px',borderBottom:'1px solid rgba(255,255,255,.06)'}}>
-          <span style={{color:'#fff',fontWeight:800,fontSize:24,letterSpacing:'-.035em'}}>Settings</span>
-          <kbd style={{color:'rgba(255,255,255,.28)',fontSize:12,fontWeight:600,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',borderRadius:7,padding:'4px 12px',fontFamily:'inherit'}}>BACK to close</kbd>
-        </div>
-        {/* Tabs */}
-        <div style={{display:'flex',borderBottom:'1px solid rgba(255,255,255,.06)',flexShrink:0}}>
-          {SETTINGS_TABS.map((t,i)=>{
-            const active=i===focusedTab;
-            return (<button key={t} onClick={()=>onTabChange(i)} style={{flex:1,height:54,border:'none',cursor:'pointer',background:'transparent',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'center',gap:6,color:active?'#fff':'rgba(255,255,255,.3)',fontSize:13,fontWeight:active?600:500,borderBottom:`2.5px solid ${active?'rgba(255,255,255,.8)':'transparent'}`,transition:'all .15s'}}>{t}</button>);
-          })}
-        </div>
-        {/* Content */}
-        <div style={{flex:1,overflowY:'auto',padding:'12px 24px 32px'}}>
-
-          {/* ── PLAYBACK TAB ── */}
-          {focusedTab===0&&[
-            {k:'autoplay',    label:'Autoplay on select',type:'toggle',val:cfg.autoplay!==false,desc:'Begin playing when OK pressed'},
-            {k:'muteOnStart', label:'Start muted',       type:'toggle',val:!!cfg.muteOnStart,   desc:'Always begin playback muted'},
-            {k:'bufferSize',  label:'Buffer size',       type:'cycle', val:BUFFER_SIZE_LABELS[cfg.bufferSize??1],desc:'Larger = smoother but slower to start'},
-            {k:'quality',     label:'Quality preference',type:'cycle', val:['Auto','1080p','720p','480p'][cfg.quality??0],desc:'Preferred stream quality'},
-          ].map((item,idx)=>(
-            <SRow key={item.k} item={item} focused={idx===focusedItem}
-              onClick={()=>onItemAction.current?.(0,idx)}/>
-          ))}
-
-          {/* ── DISPLAY TAB ── */}
-          {focusedTab===1&&[
-            {k:'aspectRatio',label:'Aspect ratio',  type:'cycle', val:['Auto','16:9','4:3','Fill'][cfg.aspectRatio??0],desc:'How video fills the screen'},
-            {k:'showBug',    label:'Channel badge',  type:'toggle',val:cfg.showBug!==false,desc:'Show channel name while watching'},
-            {k:'hintBar',    label:'Key hints',      type:'toggle',val:cfg.hintBar!==false,desc:'Remote shortcut hints at bottom'},
-          ].map((item,idx)=>(
-            <SRow key={item.k} item={item} focused={idx===focusedItem}
-              onClick={()=>onItemAction.current?.(1,idx)}/>
-          ))}
-
-          {/* ── PLAYLIST TAB ── */}
-          {focusedTab===2&&(<>
-            <p style={{color:'rgba(255,255,255,.28)',fontSize:12,fontWeight:600,letterSpacing:'.08em',textTransform:'uppercase',margin:'8px 4px 10px'}}>Select Playlist Source</p>
-            {allSrc.map((src,idx)=>{
-              const focused=idx===focusedItem, isActive=src.id===activeSourceId;
-              return (<div key={src.id} onClick={()=>{if(!isActive)onSourceChange?.(src.id);}}
-                style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'18px 20px',borderRadius:14,marginBottom:6,gap:28,cursor:'pointer',
-                  background:focused?'rgba(255,255,255,.09)':isActive?'rgba(255,255,255,.04)':'rgba(255,255,255,.025)',
-                  border:`1.5px solid ${focused?'rgba(255,255,255,.3)':isActive?'rgba(255,255,255,.18)':'rgba(255,255,255,.04)'}`,transition:'all .12s'}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:'flex',alignItems:'center',gap:10}}>
-                    <p style={{color:focused?'#fff':'rgba(255,255,255,.82)',fontSize:17,fontWeight:600,marginBottom:4}}>{src.label}</p>
-                    {isActive&&<span style={{background:'rgba(255,255,255,.12)',color:'rgba(255,255,255,.6)',fontSize:10,fontWeight:700,letterSpacing:'.08em',padding:'2px 8px',borderRadius:99,textTransform:'uppercase'}}>Active</span>}
-                    {!src.builtIn&&<span style={{background:'rgba(100,200,255,.1)',color:'rgba(100,200,255,.7)',fontSize:10,fontWeight:700,letterSpacing:'.06em',padding:'2px 8px',borderRadius:99,textTransform:'uppercase'}}>Custom</span>}
-                  </div>
-                  <p style={{color:'rgba(255,255,255,.28)',fontSize:13,lineHeight:1.5}}>{src.desc}</p>
-                </div>
-                <div style={{width:22,height:22,borderRadius:'50%',border:'2px solid rgba(255,255,255,.25)',background:isActive?'rgba(255,255,255,.85)':'transparent',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                  {isActive&&<div style={{width:8,height:8,borderRadius:'50%',background:'#000'}}/>}
-                </div>
-              </div>);
-            })}
-            <div style={{height:1,background:'rgba(255,255,255,.06)',margin:'16px 0'}}/>
-            {[
-              {k:'cacheOn', label:'Cache playlist', type:'toggle',val:cfg.cacheOn!==false, desc:'Store locally for faster startup'},
-              {k:'cacheTTL',label:'Cache duration', type:'cycle', val:['1 hour','6 hours','12 hours','24 hours'][cfg.cacheTTL??1],desc:'How long before re-fetching'},
-              {k:'__refresh',label:'Refresh now',   type:'action',actionLabel:'Refresh',desc:'Force re-download selected playlist'},
-            ].map((item,si)=>{
-              const idx=allSrc.length+si;
-              return (<SRow key={item.k} item={item} focused={idx===focusedItem}
-                onClick={()=>onItemAction.current?.(2,idx)}/>);
-            })}
-          </>)}
-
-          {/* ── CUSTOM M3U TAB ── */}
-          {focusedTab===3&&(<>
-            <p style={{color:'rgba(255,255,255,.4)',fontSize:14,lineHeight:1.6,margin:'8px 4px 20px'}}>Add your own M3U playlist URL. It will appear in the Playlist tab for selection.</p>
-            <label style={{display:'block',marginBottom:16}}>
-              <span style={{color:'rgba(255,255,255,.5)',fontSize:12,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',display:'block',marginBottom:8}}>Playlist Name</span>
-              <input value={newName} onChange={e=>setNewName(e.target.value)}
-                style={{width:'100%',background:'rgba(255,255,255,.07)',border:`1.5px solid ${focusedItem===0?'rgba(255,255,255,.4)':'rgba(255,255,255,.12)'}`,borderRadius:12,padding:'14px 18px',color:'#fff',fontSize:16,fontFamily:'inherit',outline:'none'}}
-                placeholder="My Playlist"/>
-            </label>
-            <label style={{display:'block',marginBottom:20}}>
-              <span style={{color:'rgba(255,255,255,.5)',fontSize:12,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',display:'block',marginBottom:8}}>M3U URL</span>
-              <input value={newUrl} onChange={e=>setNewUrl(e.target.value)}
-                style={{width:'100%',background:'rgba(255,255,255,.07)',border:`1.5px solid ${focusedItem===1?'rgba(255,255,255,.4)':'rgba(255,255,255,.12)'}`,borderRadius:12,padding:'14px 18px',color:'#fff',fontSize:14,fontFamily:'inherit',outline:'none'}}
-                placeholder="https://example.com/playlist.m3u"/>
-            </label>
-            <button onClick={addCustomSource}
-              style={{padding:'14px 36px',borderRadius:12,background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.25)',color:'#fff',fontSize:16,fontWeight:700,cursor:'pointer',fontFamily:'inherit',marginBottom:28}}>Add Playlist</button>
-            {customSrcs.length>0&&(<>
-              <p style={{color:'rgba(255,255,255,.28)',fontSize:12,fontWeight:600,letterSpacing:'.08em',textTransform:'uppercase',margin:'0 4px 10px'}}>Your Custom Playlists</p>
-              {customSrcs.map(src=>(
-                <div key={src.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderRadius:14,marginBottom:6,background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)'}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <p style={{color:'rgba(255,255,255,.82)',fontSize:16,fontWeight:600,marginBottom:2}}>{src.label}</p>
-                    <p style={{color:'rgba(255,255,255,.25)',fontSize:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{src.url}</p>
-                  </div>
-                  <button onClick={()=>removeCustomSource(src.id)}
-                    style={{marginLeft:16,background:'rgba(255,60,60,.1)',border:'1px solid rgba(255,60,60,.2)',color:'rgba(255,100,100,.8)',borderRadius:8,padding:'7px 14px',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}>Remove</button>
-                </div>
-              ))}
-            </>)}
-          </>)}
-
-          {/* ── ABOUT TAB ── */}
-          {focusedTab===4&&[
-            {label:'Version',        desc:'TV+ IPTV v2.0.0 — Enhanced Edition'},
-            {label:'Platform',       desc:'Samsung Smart TV · Tizen 9 · 1920×1080'},
-            {label:'Color key guide',desc:'🟥 Overlay  🟩 Search  🟦 Settings  🟡 Refresh'},
-            {label:'Navigation',     desc:'← → Browse · ↑ Categories · CH± Prev/Next · 0-9 Direct · ★ Favorite · Long-press OK to edit channel'},
-          ].map((item,idx)=>(
-            <div key={idx} style={{padding:'18px 20px',borderRadius:14,marginBottom:6,background:'rgba(255,255,255,.025)',border:'1px solid rgba(255,255,255,.04)'}}>
-              <p style={{color:'rgba(255,255,255,.82)',fontSize:17,fontWeight:600,marginBottom:4}}>{item.label}</p>
-              <p style={{color:'rgba(255,255,255,.28)',fontSize:13,lineHeight:1.5}}>{item.desc}</p>
-            </div>
-          ))}
-        </div>
-        {/* Footer */}
-        <div style={{height:52,flexShrink:0,borderTop:'1px solid rgba(255,255,255,.05)',display:'flex',alignItems:'center',justifyContent:'center',gap:32}}>
-          {[['←→','Tab'],['↑↓','Move'],['OK','Toggle'],['BACK','Close']].map(([k,d])=>(
-            <div key={k} style={{display:'flex',alignItems:'center',gap:8}}>
-              <kbd style={{color:'rgba(255,255,255,.7)',fontSize:12,fontWeight:700,background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.13)',borderRadius:6,padding:'3px 9px',fontFamily:'inherit'}}>{k}</kbd>
-              <span style={{color:'rgba(255,255,255,.22)',fontSize:12}}>{d}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
-function SRow({item,focused,onClick}) {
-  return (
-    <div onClick={onClick} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'18px 20px',borderRadius:14,marginBottom:6,gap:28,cursor:item.type==='info'?'default':'pointer',
-      background:focused?'rgba(255,255,255,.09)':'rgba(255,255,255,.025)',border:`1.5px solid ${focused?'rgba(255,255,255,.3)':'rgba(255,255,255,.04)'}`,transition:'all .12s'}}>
-      <div style={{flex:1,minWidth:0}}>
-        <p style={{color:focused?'#fff':'rgba(255,255,255,.82)',fontSize:17,fontWeight:600,marginBottom:4,letterSpacing:'-.015em'}}>{item.label}</p>
-        <p style={{color:'rgba(255,255,255,.28)',fontSize:13,lineHeight:1.5}}>{item.desc}</p>
-      </div>
-      <div style={{flexShrink:0}}>
-        {item.type==='toggle'&&(
-          <div style={{width:52,height:28,borderRadius:14,position:'relative',background:item.val?'rgba(255,255,255,.82)':'rgba(255,255,255,.1)',transition:'background .2s',boxShadow:item.val&&focused?'0 0 18px rgba(255,255,255,.22)':'none'}}>
-            <div style={{position:'absolute',top:4,width:20,height:20,borderRadius:'50%',left:item.val?28:4,background:item.val?'#000':'rgba(255,255,255,.4)',transition:'left .18s cubic-bezier(.34,1.56,.64,1)',boxShadow:'0 1px 4px rgba(0,0,0,.5)'}}/>
-          </div>
-        )}
-        {item.type==='cycle'&&<div style={{padding:'7px 16px',borderRadius:10,background:focused?'rgba(255,255,255,.14)':'rgba(255,255,255,.06)',border:`1px solid ${focused?'rgba(255,255,255,.25)':'rgba(255,255,255,.08)'}`,display:'flex',alignItems:'center',gap:10}}><span style={{color:'rgba(255,255,255,.85)',fontSize:14,fontWeight:600}}>{item.val}</span>{focused&&<span style={{color:'rgba(255,255,255,.28)',fontSize:11}}>OK</span>}</div>}
-        {item.type==='action'&&<div style={{padding:'8px 20px',borderRadius:10,background:focused?'rgba(255,255,255,.16)':'rgba(255,255,255,.06)',border:`1px solid ${focused?'rgba(255,255,255,.3)':'rgba(255,255,255,.1)'}`,color:focused?'#fff':'rgba(255,255,255,.5)',fontSize:14,fontWeight:600,transition:'all .12s'}}>{item.actionLabel}</div>}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   VIDEO PLAYER COMPONENT
-═══════════════════════════════════════════════════════════ */
-function VideoPlayer({playerState,isBuffering,isMuted,currentChannel,isTizen}) {
-  const isLoading=playerState===PS.LOADING, isPaused=playerState===PS.PAUSED, isIdle=playerState===PS.IDLE||playerState===PS.NONE;
-  const hasError=playerState===PS.ERROR, spinning=isLoading||isBuffering;
-  return (
-    <div style={{position:'absolute',inset:0,zIndex:0,background:'#000'}}>
-      {isTizen?(
-        <object id="avplay-player" type="application/avplayer" style={{position:'absolute',inset:0,width:'100%',height:'100%'}}/>
-      ):(
-        <video id="avplay-video" playsInline autoPlay muted={isMuted} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'contain'}}/>
-      )}
-      {isIdle&&!currentChannel&&(
-        <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at 50% 42%,#101010 0%,#000 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:24}}>
-          <svg width="88" height="88" viewBox="0 0 88 88" fill="none" opacity=".12"><rect x="6" y="20" width="76" height="48" rx="10" stroke="white" strokeWidth="3.5"/><path d="M28 20V12M60 20V12" stroke="white" strokeWidth="3.5" strokeLinecap="round"/><rect x="34" y="68" width="20" height="8" rx="4" fill="white"/></svg>
-          <p style={{color:'rgba(255,255,255,.15)',fontSize:24,fontWeight:500,letterSpacing:'-.02em'}}>Select a channel to start</p>
-        </div>
-      )}
-      {spinning&&(
-        <div style={{position:'absolute',inset:0,zIndex:5,background:'rgba(0,0,0,.5)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:22}}>
-          <div className="spin" style={{width:56,height:56,borderRadius:'50%',border:'3px solid rgba(255,255,255,.08)',borderTopColor:'rgba(255,255,255,.75)'}}/>
-          {currentChannel&&<div className="fade-in" style={{display:'flex',alignItems:'center',gap:14}}>
-            <ChannelLogo src={currentChannel.logo} name={currentChannel.name} size={38} radius={9}/>
-            <div><p style={{color:'rgba(255,255,255,.88)',fontWeight:600,fontSize:18}}>{currentChannel.name}</p><p style={{color:'rgba(255,255,255,.32)',fontSize:14,marginTop:3}}>Connecting…</p></div>
-          </div>}
-        </div>
-      )}
-      {isPaused&&(
-        <div style={{position:'absolute',inset:0,zIndex:5,background:'rgba(0,0,0,.28)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{width:90,height:90,borderRadius:'50%',background:'rgba(255,255,255,.10)',border:'2px solid rgba(255,255,255,.28)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <PlayIcon/>
-          </div>
-        </div>
-      )}
-      {hasError&&(
-        <div style={{position:'absolute',inset:0,zIndex:5,background:'rgba(0,0,0,.82)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20}}>
-          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="1.5"><path strokeLinecap="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-          <div style={{textAlign:'center'}}><p style={{color:'rgba(255,255,255,.65)',fontWeight:600,fontSize:20}}>Stream unavailable</p><p style={{color:'rgba(255,255,255,.28)',fontSize:15,marginTop:8}}>Press OK to retry · select another channel</p></div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   LOADING SCREEN
-═══════════════════════════════════════════════════════════ */
-function LoadingScreen({progress,status,error,onRetry}) {
-  return (
-    <div style={{width:1920,height:1080,background:'#080808',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:52,fontFamily:'inherit'}}>
-      <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:22}}>
-        <div style={{width:108,height:108,borderRadius:28,background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.09)',display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <svg width="54" height="54" viewBox="0 0 54 54" fill="none">
-            <rect x="4" y="14" width="46" height="29" rx="6" stroke="rgba(255,255,255,.6)" strokeWidth="2.5"/>
-            <path d="M18 14V9M36 14V9" stroke="rgba(255,255,255,.25)" strokeWidth="2.5" strokeLinecap="round"/>
-            <rect x="20" y="43" width="14" height="5" rx="2.5" fill="rgba(255,255,255,.15)"/>
-            <line x1="11" y1="22" x2="43" y2="22" stroke="rgba(255,255,255,.07)" strokeWidth="1.5"/>
-            <line x1="11" y1="28" x2="43" y2="28" stroke="rgba(255,255,255,.07)" strokeWidth="1.5"/>
-            <line x1="11" y1="34" x2="43" y2="34" stroke="rgba(255,255,255,.07)" strokeWidth="1.5"/>
-          </svg>
-        </div>
-        <div style={{textAlign:'center'}}>
-          <p style={{color:'#fff',fontWeight:800,fontSize:42,letterSpacing:'-.04em',lineHeight:1}}>Telugu<span style={{color:'rgba(255,255,255,.25)',fontWeight:300}}>IPTV</span></p>
-          <p style={{color:'rgba(255,255,255,.22)',fontSize:18,fontWeight:400,marginTop:10}}>Samsung Smart TV · Tizen 9</p>
-        </div>
-      </div>
-      <div style={{width:380,display:'flex',flexDirection:'column',alignItems:'center',gap:16}}>
-        {error?(<>
-          <p style={{color:'rgba(255,255,255,.4)',fontSize:16,textAlign:'center',lineHeight:1.5}}>{error}</p>
-          <button onClick={onRetry} style={{marginTop:8,padding:'14px 44px',borderRadius:12,background:'rgba(255,255,255,.09)',border:'1px solid rgba(255,255,255,.18)',color:'#fff',fontWeight:700,fontSize:17,cursor:'pointer',fontFamily:'inherit'}}>Retry</button>
-        </>):(<>
-          <div style={{width:'100%',height:2,borderRadius:99,background:'rgba(255,255,255,.07)',overflow:'hidden'}}>
-            <div style={{height:'100%',borderRadius:99,background:'rgba(255,255,255,.65)',width:`${Math.max(2,progress)}%`,transition:'width .4s ease'}}/>
-          </div>
-          <p style={{color:'rgba(255,255,255,.25)',fontSize:15,fontWeight:400}}>{status}</p>
-        </>)}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   OVERLAY COMPONENT
-═══════════════════════════════════════════════════════════ */
-function Overlay({visible,playerState,isMuted,currentChannel,onTogglePause,onToggleMute,channels,currentChannelIndex,focusedChannelIdx,onSelectChannel,categories,selectedCategory,onSelectCategory,focusedCatIdx,zone,onSettings,onSearch,clock,favorites,onToggleFav,onEditRequest}) {
-  const showCats=zone==='cats';
-  return (
-    <div style={{position:'absolute',inset:0,zIndex:10,display:'flex',flexDirection:'column',opacity:visible?1:0,transition:'opacity .3s ease',pointerEvents:visible?'auto':'none'}}>
-      <TopBar currentChannel={currentChannel} onSettings={onSettings} onSearch={onSearch} playerState={playerState} isMuted={isMuted} onToggleMute={onToggleMute} onTogglePause={onTogglePause} clock={clock}/>
-      <div style={{flex:1}}/>
-      {showCats&&<CategoryRow categories={categories} selectedCategory={selectedCategory} onSelect={onSelectCategory} focusedIdx={focusedCatIdx}/>}
-      <ChannelStrip channels={channels} currentIndex={currentChannelIndex} focusedIndex={focusedChannelIdx} onSelect={onSelectChannel} favorites={favorites} onToggleFav={onToggleFav} onEditRequest={onEditRequest}/>
-      <HintBar zone={zone}/>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   APP SHELL (scales 1920×1080 to any TV)
-═══════════════════════════════════════════════════════════ */
-function AppShell({children}) {
-  const [scale,setScale]=useState(1);
-  useEffect(()=>{
-    function compute(){try{const sw=window.screen?.width||window.innerWidth||1920,sh=window.screen?.height||window.innerHeight||1080;setScale(Math.min(sw/1920,sh/1080));}catch{setScale(1);}}
-    compute(); window.addEventListener('resize',compute);
-    return()=>window.removeEventListener('resize',compute);
-  },[]);
-  return (
-    <div style={{width:'100vw',height:'100vh',overflow:'hidden',background:'#000',display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{width:1920,height:1080,position:'relative',overflow:'hidden',background:'#000',transform:`scale(${scale})`,transformOrigin:'center center',flexShrink:0}}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   ROOT APP
-═══════════════════════════════════════════════════════════ */
-function fmtClock(d){try{return d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});}catch{return '--:--';}}
-
-function App() {
-  /* ── Overlay auto-hide ── */
-  const [overlayVisible, setOverlayVisible] = useState(true);
-  const hideTimer  = useRef(null);
-  const visibleRef = useRef(true);
-
-  const wakeOverlay = useCallback(()=>{
-    if (!visibleRef.current){visibleRef.current=true;setOverlayVisible(true);}
-    clearTimeout(hideTimer.current);
-    hideTimer.current=setTimeout(()=>{
-      if (zoneRef.current!=='settings'&&zoneRef.current!=='search'){visibleRef.current=false;setOverlayVisible(false);}
-    },HIDE_MS);
-  },[]);
-
-  useEffect(()=>{
-    hideTimer.current=setTimeout(()=>{visibleRef.current=false;setOverlayVisible(false);},HIDE_MS);
-    return()=>clearTimeout(hideTimer.current);
-  },[]);
-
-  /* ── Zone + focus (ref-backed) ── */
-  const [zone,          setZone]         = useState('strip');
-  const [focusedChIdx,  setFocusedChIdx] = useState(0);
-  const [focusedCatIdx, setFocusedCatIdx]= useState(0);
-  const zoneRef  = useRef('strip');
-  const chIdxRef = useRef(0);
-  const catIdxRef= useRef(0);
-
-  const setZoneSync = z  =>{ zoneRef.current=z; setZone(z); };
-  const setChSync   = fn =>setFocusedChIdx(p=>{ const n=typeof fn==='function'?fn(p):fn; chIdxRef.current=n; return n; });
-  const setCatSync  = fn =>setFocusedCatIdx(p=>{ const n=typeof fn==='function'?fn(p):fn; catIdxRef.current=n; return n; });
-
-  /* ── Settings sub-nav ── */
-  const [settingsTab,  setSettingsTab]  = useState(0);
-  const [settingsItem, setSettingsItem] = useState(0);
-  const tabRef    = useRef(0);
-  const itemRef   = useRef(0);
-  const setTabSync  = t  =>{ tabRef.current=t; setSettingsTab(t); };
-  const setItemSync = fn =>setSettingsItem(p=>{ const n=typeof fn==='function'?fn(p):fn; itemRef.current=n; return n; });
-  const itemActionRef = useRef(null);
-
-  /* ── Volume HUD ── */
-  const [volHUDVisible, setVolHUDVisible] = useState(false);
-  const volHUDTimer = useRef(null);
-  const showVolHUD = ()=>{ setVolHUDVisible(true); clearTimeout(volHUDTimer.current); volHUDTimer.current=setTimeout(()=>setVolHUDVisible(false),VOL_HUD_MS); };
-  useEffect(()=>()=>clearTimeout(volHUDTimer.current),[]);
-
-  /* ── Clock ── */
-  const [clock, setClock] = useState(()=>fmtClock(new Date()));
-  useEffect(()=>{ const id=setInterval(()=>setClock(fmtClock(new Date())),20000); return()=>clearInterval(id); },[]);
-
-  /* ── Channel number entry (digit keys) ── */
-  const [digitBuffer, setDigitBuffer] = useState('');
-  const digitTimer = useRef(null);
-  const digitBufRef = useRef('');
-
-  /* ── Channel edit modal ── */
-  const [editingChannel, setEditingChannel] = useState(null);
-
-  /* ── Playlist ── */
-  const {
-    filteredChannels, categories, loading, loadProgress, loadStatus, error,
-    selectedCategory, setSelectedCategory,
-    searchQuery, setSearchQuery,
-    currentChannel, currentChannelIndex, selectChannel,
-    refreshPlaylist, activeSourceId, setActiveSourceId,
-    favorites, toggleFavorite,
-    overrides, saveOverride,
-  } = usePlaylist();
-
-  const chRef   = useRef([]);
-  const catsRef = useRef([]);
-  chRef.current   = filteredChannels;
-  catsRef.current = categories;
-
-  /* ── AVPlay ── */
-  const {playerState, isBuffering, isTizen, playChannel, togglePause, stop} = useAVPlay();
-
-  /* ── Volume ── */
-  const {volume, isMuted, volumeUp, volumeDown, toggleMute} = useVolume();
-
-  const playRef   = useRef(playChannel);
-  const selectRef = useRef(selectChannel);
-  playRef.current   = playChannel;
-  selectRef.current = selectChannel;
-
-  /* Sync focusedChIdx with currentChannelIndex */
-  useEffect(()=>{
-    if (currentChannelIndex>=0){ chIdxRef.current=currentChannelIndex; setFocusedChIdx(currentChannelIndex); }
-  },[currentChannelIndex]);
-
-  /* ── Last channel memory — restore on startup ── */
-  useEffect(()=>{
-    if (loading) return;
-    const last = storage.get(LAST_CH_KEY, null);
-    if (!last) return;
-    // If source matches, restore
-    const cfg = storage.get(CFG_KEY,{});
-    const curSource = cfg.playlistSource ?? DEFAULT_SOURCE_ID;
-    if (last.sourceId === curSource && last.channelId) {
-      const idx = filteredChannels.findIndex(ch=>ch.id===last.channelId);
-      if (idx>=0) {
-        const ch = filteredChannels[idx];
-        selectRef.current(idx);
-        chIdxRef.current=idx;
-        setFocusedChIdx(idx);
-        if (ch.url) playRef.current(ch.url, ch.name);
-      }
+function useRemote(handlers){
+  var hRef=useRef(handlers);hRef.current=handlers;
+  useEffect(function(){regKeys();},[]);
+  useEffect(function(){
+    function onKey(e){
+      var h=hRef.current,k=e.keyCode;
+      if(h.onAny)h.onAny();
+      if(k===KEYS.UP){e.preventDefault();if(h.onUp)h.onUp();}
+      else if(k===KEYS.DOWN){e.preventDefault();if(h.onDown)h.onDown();}
+      else if(k===KEYS.LEFT){e.preventDefault();if(h.onLeft)h.onLeft();}
+      else if(k===KEYS.RIGHT){e.preventDefault();if(h.onRight)h.onRight();}
+      else if(k===KEYS.ENTER){e.preventDefault();if(h.onOK)h.onOK();}
+      else if(k===KEYS.BACK){e.preventDefault();if(h.onBack)h.onBack();}
+      else if(k===KEYS.EXIT){e.preventDefault();}
+      else if(k===KEYS.PLAY||k===KEYS.PLAY_PAUSE||k===KEYS.PAUSE){e.preventDefault();if(h.onPP)h.onPP();}
+      else if(k===KEYS.STOP){e.preventDefault();if(h.onStop)h.onStop();}
+      else if(k===KEYS.CHU){e.preventDefault();if(h.onCHU)h.onCHU();}
+      else if(k===KEYS.CHD){e.preventDefault();if(h.onCHD)h.onCHD();}
+      else if(k===KEYS.VU){e.preventDefault();if(h.onVU)h.onVU();}
+      else if(k===KEYS.VD){e.preventDefault();if(h.onVD)h.onVD();}
+      else if(k===KEYS.MUTE){e.preventDefault();if(h.onMute)h.onMute();}
+      else if(k===KEYS.RED){e.preventDefault();if(h.onRed)h.onRed();}
+      else if(k===KEYS.GREEN){e.preventDefault();if(h.onGreen)h.onGreen();}
+      else if(k===KEYS.YELLOW){e.preventDefault();if(h.onYellow)h.onYellow();}
+      else if(k===KEYS.BLUE){e.preventDefault();if(h.onBlue)h.onBlue();}
+      else if(k===KEYS.TOOLS){e.preventDefault();if(h.onSettings)h.onSettings();}
+      else if(k>=KEYS.N0&&k<=KEYS.N9){e.preventDefault();if(h.onDigit)h.onDigit(k-KEYS.N0);}
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    window.addEventListener('keydown',onKey);
+    return function(){window.removeEventListener('keydown',onKey);};
+  },[]);
+}
+
+/* ── Clock ──────────────────────────────────── */
+function fmtTime(d){try{return d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});}catch(e){return'--:--';}}
+
+/* ── LoadingScreen ──────────────────────────── */
+function LoadingScreen(props){
+  return h('div',{style:{width:1920,height:1080,background:'#080808',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:52}},
+    h('div',{style:{textAlign:'center'}},
+      h('div',{style:{width:108,height:108,borderRadius:28,background:'rgba(255,255,255,.04)',border:'1px solid rgba(255,255,255,.09)',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 24px'}},
+        h('svg',{width:54,height:54,viewBox:'0 0 54 54',fill:'none'},
+          h('rect',{x:4,y:14,width:46,height:29,rx:6,stroke:'rgba(255,255,255,.6)',strokeWidth:2.5}),
+          h('path',{d:'M18 14V9M36 14V9',stroke:'rgba(255,255,255,.25)',strokeWidth:2.5,strokeLinecap:'round'}),
+          h('rect',{x:20,y:43,width:14,height:5,rx:2.5,fill:'rgba(255,255,255,.15)'})
+        )
+      ),
+      h('p',{style:{color:'#fff',fontWeight:900,fontSize:42,letterSpacing:'-.04em',lineHeight:1}},
+        'Telugu',h('span',{style:{color:'rgba(255,255,255,.25)',fontWeight:300}},'IPTV')),
+      h('p',{style:{color:'rgba(255,255,255,.22)',fontSize:18,marginTop:10}},'Samsung Smart TV · Tizen 9')
+    ),
+    props.error
+      ? h('div',{style:{textAlign:'center'}},
+          h('p',{style:{color:'rgba(255,255,255,.4)',fontSize:16,marginBottom:16}},props.error),
+          h('button',{onClick:props.onRetry,style:{padding:'14px 44px',borderRadius:12,background:'rgba(255,255,255,.09)',border:'1px solid rgba(255,255,255,.18)',color:'#fff',fontWeight:700,fontSize:17}},'Retry')
+        )
+      : h('div',{style:{width:380}},
+          h('div',{style:{width:'100%',height:2,borderRadius:99,background:'rgba(255,255,255,.07)',overflow:'hidden'}},
+            h('div',{style:{height:'100%',borderRadius:99,background:'rgba(255,255,255,.65)',width:Math.max(2,props.pct)+'%',transition:'width .4s ease'}})
+          ),
+          h('p',{style:{color:'rgba(255,255,255,.25)',fontSize:15,marginTop:12,textAlign:'center'}},props.status)
+        )
+  );
+}
+
+/* ── Video player ───────────────────────────── */
+function VideoPlayer(props){
+  var ps=props.ps,buf=props.buf,muted=props.muted,ch=props.ch,isTizen=props.isTizen;
+  var isLoad=ps===PS.LOADING,isPause=ps===PS.PAUSED,isIdle=ps===PS.IDLE||ps===PS.NONE,isErr=ps===PS.ERROR;
+  return h('div',{style:{position:'absolute',inset:0,zIndex:0,background:'#000'}},
+    isTizen
+      ? h('object',{id:'avplay-player',type:'application/avplayer',style:{position:'absolute',inset:0,width:'100%',height:'100%'}})
+      : h('video',{id:'avv',playsInline:true,autoPlay:true,muted:muted,style:{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'contain'}}),
+    (isIdle&&!ch) && h('div',{style:{position:'absolute',inset:0,background:'radial-gradient(ellipse at 50% 42%,#101010 0%,#000 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:24}},
+      h('svg',{width:88,height:88,viewBox:'0 0 88 88',fill:'none',opacity:.12},
+        h('rect',{x:6,y:20,width:76,height:48,rx:10,stroke:'white',strokeWidth:3.5}),
+        h('path',{d:'M28 20V12M60 20V12',stroke:'white',strokeWidth:3.5,strokeLinecap:'round'}),
+        h('rect',{x:34,y:68,width:20,height:8,rx:4,fill:'white'})
+      ),
+      h('p',{style:{color:'rgba(255,255,255,.15)',fontSize:24,fontWeight:500}},'Select a channel to start')
+    ),
+    (buf||isLoad) && h('div',{style:{position:'absolute',inset:0,zIndex:5,background:'rgba(0,0,0,.5)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:22}},
+      h('div',{className:'spin',style:{width:56,height:56,borderRadius:'50%',border:'3px solid rgba(255,255,255,.08)',borderTopColor:'rgba(255,255,255,.75)'}}),
+      ch && h('div',{style:{display:'flex',alignItems:'center',gap:14}},
+        h(Logo,{src:ch.logo,name:ch.name,size:38,radius:9}),
+        h('div',null,
+          h('p',{style:{color:'rgba(255,255,255,.88)',fontWeight:600,fontSize:18}},ch.name),
+          h('p',{style:{color:'rgba(255,255,255,.32)',fontSize:14,marginTop:3}},'Connecting…')
+        )
+      )
+    ),
+    isPause && h('div',{style:{position:'absolute',inset:0,zIndex:5,background:'rgba(0,0,0,.28)',display:'flex',alignItems:'center',justifyContent:'center'}},
+      h('div',{style:{width:90,height:90,borderRadius:'50%',background:'rgba(255,255,255,.1)',border:'2px solid rgba(255,255,255,.28)',display:'flex',alignItems:'center',justifyContent:'center'}},
+        h('svg',{width:36,height:36,viewBox:'0 0 24 24',fill:'rgba(255,255,255,.9)'},h('path',{d:'M8 5v14l11-7z'}))
+      )
+    ),
+    isErr && h('div',{style:{position:'absolute',inset:0,zIndex:5,background:'rgba(0,0,0,.82)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20}},
+      h('svg',{width:56,height:56,viewBox:'0 0 24 24',fill:'none',stroke:'rgba(255,255,255,.35)',strokeWidth:1.5},h('path',{strokeLinecap:'round',d:'M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z'})),
+      h('p',{style:{color:'rgba(255,255,255,.65)',fontWeight:600,fontSize:20}},'Stream unavailable'),
+      h('p',{style:{color:'rgba(255,255,255,.28)',fontSize:15,marginTop:4}},'Press OK to retry')
+    )
+  );
+}
+
+/* ── Channel card ───────────────────────────── */
+function ChannelCard(props){
+  var ch=props.ch,idx=props.idx,isPlay=props.isPlay,isFoc=props.isFoc,onSel=props.onSel,isFav=props.isFav,onFav=props.onFav,onEdit=props.onEdit;
+  var lpRef=useRef(null);
+  function mdown(){lpRef.current=setTimeout(function(){if(onEdit)onEdit(idx);},800);}
+  function mup(){clearTimeout(lpRef.current);}
+  return h('button',{onClick:function(){onSel(idx);},onMouseDown:mdown,onTouchStart:mdown,onMouseUp:mup,onTouchEnd:mup,onMouseLeave:mup,
+    style:{flexShrink:0,width:CARD_W,height:CARD_H,borderRadius:18,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,padding:'0 18px',position:'relative',overflow:'hidden',
+      background:isPlay?'rgba(255,255,255,.16)':isFoc?'rgba(255,255,255,.10)':'rgba(255,255,255,.04)',
+      border:isPlay?'1.5px solid rgba(255,255,255,.38)':'1.5px solid rgba(255,255,255,.07)',transition:'background .14s'}},
+    isPlay && h('div',{style:{position:'absolute',top:0,left:'15%',right:'15%',height:2,background:'linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent)',borderRadius:99}}),
+    /* Star */
+    h('button',{onClick:function(e){e.stopPropagation();if(onFav)onFav(ch.id);},
+      style:{position:'absolute',top:8,right:10,background:'none',border:'none',cursor:'pointer',color:isFav?'#FFD60A':'rgba(255,255,255,.2)',fontSize:18,lineHeight:1,zIndex:5,padding:4,transition:'color .15s'}},
+      '★'),
+    /* Logo */
+    h('div',{style:{position:'relative',flexShrink:0}},
+      h(Logo,{src:ch.logo,name:ch.name,size:100,radius:16,lazy:true}),
+      isPlay && h('div',{style:{position:'absolute',bottom:-9,left:'50%',transform:'translateX(-50%)',display:'flex',alignItems:'center',gap:5,background:'rgba(255,255,255,.95)',borderRadius:99,padding:'3px 10px',whiteSpace:'nowrap'}},
+        h('div',{className:'blink',style:{width:6,height:6,borderRadius:'50%',background:'#FF3B30'}}),
+        h('span',{style:{color:'#000',fontSize:10,fontWeight:800,letterSpacing:'.1em'}},'LIVE')
+      )
+    ),
+    h('p',{style:{color:isPlay?'#fff':'rgba(255,255,255,.72)',fontSize:17,fontWeight:isPlay?700:500,lineHeight:1.3,textAlign:'center',overflow:'hidden',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',letterSpacing:'-.01em',width:'100%'}},ch.name),
+    h('p',{style:{color:'rgba(255,255,255,.22)',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:CARD_W-36}},ch.group||'General')
+  );
+}
+
+/* ── Channel strip ──────────────────────────── */
+function Strip(props){
+  var chs=props.chs,curIdx=props.curIdx,focIdx=props.focIdx,onSel=props.onSel,favs=props.favs,onFav=props.onFav,onEdit=props.onEdit;
+  var trackRef=useRef(null);
+  useLayoutEffect(function(){
+    if(!trackRef.current)return;
+    trackRef.current.style.transform='translateX('+(CARD_L-focIdx*STEP)+'px)';
+  });
+  if(!chs.length)return null;
+  return h('div',{style:{position:'relative',height:CARD_H+52,flexShrink:0,overflow:'hidden',background:'linear-gradient(to top,rgba(0,0,0,.96) 0%,rgba(0,0,0,.7) 55%,transparent 100%)'}},
+    h('div',{style:{position:'absolute',inset:0,zIndex:10,pointerEvents:'none',background:'linear-gradient(to right,rgba(0,0,0,.9) 0%,transparent 200px,transparent calc(100% - 200px),rgba(0,0,0,.9) 100%)'}}),
+    h('div',{style:{position:'absolute',left:CARD_L-RING_PAD,top:36-RING_PAD,width:CARD_W+RING_PAD*2,height:CARD_H+RING_PAD*2,borderRadius:22,border:'2.5px solid rgba(255,255,255,.88)',boxShadow:'0 0 0 1px rgba(255,255,255,.07),0 0 32px rgba(255,255,255,.1)',zIndex:20,pointerEvents:'none'}}),
+    h('div',{ref:trackRef,style:{position:'absolute',top:36,left:0,display:'flex',gap:GAP,transition:'transform .22s cubic-bezier(.25,1,.5,1)',willChange:'transform'}},
+      chs.map(function(ch,i){return h(ChannelCard,{key:ch.id||'c'+i,ch:ch,idx:i,isPlay:i===curIdx,isFoc:i===focIdx,onSel:onSel,isFav:favs&&favs.indexOf(ch.id)>=0,onFav:onFav,onEdit:onEdit});})
+    )
+  );
+}
+
+/* ── Category bar ───────────────────────────── */
+function CatBar(props){
+  var cats=props.cats,sel=props.sel,onSel=props.onSel,focIdx=props.focIdx;
+  var rowRef=useRef(null),actRef=useRef(null);
+  useLayoutEffect(function(){
+    if(!rowRef.current||!actRef.current)return;
+    var c=rowRef.current,el=actRef.current;
+    c.scrollLeft=el.offsetLeft-c.clientWidth/2+el.offsetWidth/2;
+  },[sel]);
+  return h('div',{className:'slide-up',style:{position:'relative',height:68,flexShrink:0}},
+    h('div',{style:{position:'absolute',inset:0,zIndex:1,pointerEvents:'none',background:'linear-gradient(to right,rgba(0,0,0,.8) 0%,transparent 130px,transparent calc(100% - 130px),rgba(0,0,0,.8) 100%)'}}),
+    h('div',{ref:rowRef,style:{display:'flex',alignItems:'center',gap:12,height:'100%',overflowX:'auto',scrollbarWidth:'none',padding:'0 130px',position:'relative',zIndex:2}},
+      cats.map(function(cat,i){
+        var act=cat.name===sel,foc=i===focIdx;
+        return h('button',{key:cat.name,ref:act?actRef:null,onClick:function(){onSel(cat.name);},
+          style:{flexShrink:0,height:42,padding:'0 22px',borderRadius:99,border:'1.5px solid '+(act||foc?'rgba(255,255,255,.55)':'rgba(255,255,255,.1)'),background:act||foc?'rgba(255,255,255,.13)':'rgba(255,255,255,.04)',color:act||foc?'#fff':'rgba(255,255,255,.38)',fontSize:15,fontWeight:act?600:500,cursor:'pointer',display:'flex',alignItems:'center',gap:8,whiteSpace:'nowrap',transition:'all .15s'}},
+          h('span',{style:{fontSize:16}},cat.icon),cat.name
+        );
+      })
+    )
+  );
+}
+
+/* ── Top bar ────────────────────────────────── */
+function IBtn(props){return h('button',{onClick:props.onClick,title:props.title,style:{width:42,height:42,borderRadius:11,flexShrink:0,background:props.active?'rgba(255,255,255,.2)':'rgba(255,255,255,.06)',border:'1.5px solid '+(props.active?'rgba(255,255,255,.4)':'rgba(255,255,255,.09)'),color:props.active?'#fff':'rgba(255,255,255,.72)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}},props.children);}
+
+function TopBar(props){
+  var ch=props.ch,ps=props.ps,muted=props.muted,clock=props.clock;
+  var isPlay=ps===PS.PLAYING,isPause=ps===PS.PAUSED;
+  return h('div',{style:{height:80,flexShrink:0,display:'flex',alignItems:'center',padding:'0 60px',background:'linear-gradient(to bottom,rgba(0,0,0,.92) 0%,rgba(0,0,0,0) 100%)',gap:0}},
+    h('div',{style:{display:'flex',alignItems:'center',gap:0,flexShrink:0}},
+      h('span',{style:{color:'#fff',fontWeight:900,fontSize:34,letterSpacing:'-.05em',lineHeight:1}},'TV'),
+      h('span',{style:{color:'rgba(255,255,255,.85)',fontWeight:300,fontSize:36,lineHeight:1,marginTop:-2}},'+')
+    ),
+    ch && h('div',{style:{width:1,height:26,background:'rgba(255,255,255,.15)',margin:'0 28px',flexShrink:0}}),
+    ch ? h('div',{style:{display:'flex',alignItems:'center',gap:12,flex:1,minWidth:0}},
+      h('div',{className:'blink',style:{width:8,height:8,borderRadius:'50%',background:'#FF3B30',flexShrink:0}}),
+      h('span',{style:{color:'rgba(255,255,255,.42)',fontSize:11,fontWeight:700,letterSpacing:'.1em',flexShrink:0}},'LIVE'),
+      h(Logo,{src:ch.logo,name:ch.name,size:32,radius:7}),
+      h('span',{style:{color:'rgba(255,255,255,.88)',fontSize:18,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},ch.name),
+      ch.group && h('span',{style:{color:'rgba(255,255,255,.25)',fontSize:16,flexShrink:0}},ch.group)
+    ) : h('div',{style:{flex:1}}),
+    h('div',{style:{display:'flex',alignItems:'center',gap:8,flexShrink:0}},
+      h(IBtn,{onClick:props.onSearch,title:'Search 🟢'},
+        h('svg',{width:19,height:19,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2.2,strokeLinecap:'round'},
+          h('circle',{cx:11,cy:11,r:8}),h('path',{d:'m21 21-4.35-4.35'}))),
+      h(IBtn,{onClick:props.onMute,active:muted,title:'Mute'},
+        muted
+          ? h('svg',{width:19,height:19,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2.2,strokeLinecap:'round'},h('path',{d:'M11 5 6 9H2v6h4l5 4V5z'}),h('line',{x1:23,y1:9,x2:17,y2:15}),h('line',{x1:17,y1:9,x2:23,y2:15}))
+          : h('svg',{width:19,height:19,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2.2,strokeLinecap:'round'},h('polygon',{points:'11 5 6 9 2 9 2 15 6 15 11 19 11 5'}),h('path',{d:'M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07'}))
+      ),
+      (isPlay||isPause) && h(IBtn,{onClick:props.onPP,title:'Play/Pause'},
+        isPause
+          ? h('svg',{width:19,height:19,viewBox:'0 0 24 24',fill:'currentColor'},h('path',{d:'M8 5v14l11-7z'}))
+          : h('svg',{width:19,height:19,viewBox:'0 0 24 24',fill:'currentColor'},h('rect',{x:6,y:4,width:4,height:16}),h('rect',{x:14,y:4,width:4,height:16}))
+      ),
+      h(IBtn,{onClick:props.onSettings,title:'Settings 🔵'},
+        h('svg',{width:19,height:19,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round'},
+          h('circle',{cx:12,cy:12,r:3}),
+          h('path',{d:'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'})
+        )
+      ),
+      h('div',{style:{marginLeft:16,color:'rgba(255,255,255,.4)',fontSize:17,fontWeight:500,fontVariantNumeric:'tabular-nums',letterSpacing:'-.01em',flexShrink:0}},clock)
+    )
+  );
+}
+
+/* ── Hint bar ───────────────────────────────── */
+function HintBar(props){
+  var zone=props.zone;
+  var hints=zone==='cats'
+    ? [{k:'← →',l:'Category'},{k:'↓',l:'Channels'},{k:'OK',l:'Select'}]
+    : [{k:'← →',l:'Browse'},{k:'OK',l:'Play'},{k:'↑',l:'Categories'},{k:'CH±',l:'Prev/Next'},{k:'0-9',l:'Ch.Jump'},{k:'★',l:'Favorite'},{k:'🟥',l:'Overlay',c:'#FF453A'},{k:'🟩',l:'Search',c:'#30D158'},{k:'🟦',l:'Settings',c:'#0A84FF'}];
+  return h('div',{style:{height:52,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',gap:20,background:'linear-gradient(to top,rgba(0,0,0,.6) 0%,transparent 100%)'}},
+    hints.map(function(hi){return h('div',{key:hi.k,style:{display:'flex',alignItems:'center',gap:7}},
+      h('kbd',{style:{color:hi.c||'rgba(255,255,255,.82)',fontSize:12,fontWeight:700,background:'rgba(255,255,255,.08)',border:'1px solid rgba(255,255,255,.14)',borderRadius:6,padding:'3px 9px',fontFamily:'inherit'}},hi.k),
+      h('span',{style:{color:'rgba(255,255,255,.28)',fontSize:12}},hi.l)
+    );})
+  );
+}
+
+/* ── Overlay ────────────────────────────────── */
+function Overlay(props){
+  var vis=props.visible;
+  return h('div',{style:{position:'absolute',inset:0,zIndex:10,display:'flex',flexDirection:'column',opacity:vis?1:0,transition:'opacity .3s ease',pointerEvents:vis?'auto':'none'}},
+    h(TopBar,{ch:props.ch,ps:props.ps,muted:props.muted,clock:props.clock,onSearch:props.onSearch,onMute:props.onMute,onPP:props.onPP,onSettings:props.onSettings}),
+    h('div',{style:{flex:1}}),
+    props.zone==='cats' && h(CatBar,{cats:props.cats,sel:props.selCat,onSel:props.onSelCat,focIdx:props.catFocIdx}),
+    h(Strip,{chs:props.chs,curIdx:props.curIdx,focIdx:props.chFocIdx,onSel:props.onSelCh,favs:props.favs,onFav:props.onFav,onEdit:props.onEdit}),
+    h(HintBar,{zone:props.zone})
+  );
+}
+
+/* ── Volume HUD ─────────────────────────────── */
+function VolHUD(props){
+  if(!props.visible)return null;
+  var pct=Math.min(100,Math.max(0,props.vol)),bars=20;
+  return h('div',{className:'fade-in',style:{position:'absolute',bottom:420,left:'50%',transform:'translateX(-50%)',zIndex:30,display:'flex',flexDirection:'column',alignItems:'center',gap:10,background:'rgba(0,0,0,.75)',border:'1px solid rgba(255,255,255,.12)',borderRadius:16,padding:'14px 28px',backdropFilter:'blur(12px)'}},
+    h('div',{style:{display:'flex',alignItems:'center',gap:12}},
+      h('svg',{width:22,height:22,viewBox:'0 0 24 24',fill:'none',stroke:'rgba(255,255,255,.6)',strokeWidth:2,strokeLinecap:'round'},
+        h('polygon',{points:'11 5 6 9 2 9 2 15 6 15 11 19 11 5'}),
+        pct>30&&h('path',{d:'M15.54 8.46a5 5 0 0 1 0 7.07'}),
+        pct>60&&h('path',{d:'M19.07 4.93a10 10 0 0 1 0 14.14'})
+      ),
+      h('div',{style:{display:'flex',alignItems:'flex-end',gap:3,height:24}},
+        Array.from({length:bars},function(_,i){var t=(i+1)/bars*100,act=!props.mut&&pct>=t;return h('div',{key:i,style:{width:4,height:8+i/bars*16,borderRadius:2,background:act?'rgba(255,255,255,.85)':'rgba(255,255,255,.12)',transition:'background .1s'}});})),
+      h('span',{style:{color:'rgba(255,255,255,.7)',fontSize:16,fontWeight:600,fontVariantNumeric:'tabular-nums',minWidth:36,textAlign:'right'}},props.mut?'🔇':''+pct)
+    )
+  );
+}
+
+/* ── Channel number OSD ─────────────────────── */
+function NumOSD(props){
+  if(!props.digits)return null;
+  return h('div',{className:'pop-in',style:{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:45,background:'rgba(0,0,0,.82)',border:'2px solid rgba(255,255,255,.28)',borderRadius:24,padding:'28px 52px',textAlign:'center',backdropFilter:'blur(18px)'}},
+    h('div',{style:{color:'#fff',fontSize:72,fontWeight:900,letterSpacing:'-.04em',lineHeight:1,fontVariantNumeric:'tabular-nums'}},props.digits),
+    h('div',{style:{color:'rgba(255,255,255,.35)',fontSize:18,marginTop:10}},'of '+props.total+' channels')
+  );
+}
+
+/* ── Search overlay ─────────────────────────── */
+function SearchOvr(props){
+  if(!props.open)return null;
+  return h(null,null,
+    h('div',{onClick:props.onClose,style:{position:'absolute',inset:0,zIndex:55,background:'rgba(0,0,0,.7)',backdropFilter:'blur(10px)'}}),
+    h('div',{className:'slide-up',style:{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:56,width:760,display:'flex',flexDirection:'column',gap:20}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:20,background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.2)',borderRadius:20,padding:'20px 28px',boxShadow:'0 24px 80px rgba(0,0,0,.6)'}},
+        h('svg',{width:28,height:28,viewBox:'0 0 24 24',fill:'none',stroke:'rgba(255,255,255,.5)',strokeWidth:2.2,strokeLinecap:'round'},h('circle',{cx:11,cy:11,r:8}),h('path',{d:'m21 21-4.35-4.35'})),
+        h('input',{autoFocus:true,type:'text',value:props.query,onChange:function(e){props.onQ(e.target.value);},placeholder:'Search channels…',style:{flex:1,fontSize:26,fontWeight:500,letterSpacing:'-.02em'}}),
+        props.query && h('button',{onClick:function(){props.onQ('');},style:{background:'rgba(255,255,255,.1)',color:'rgba(255,255,255,.6)',width:32,height:32,borderRadius:'50%',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center'}},'×')
+      ),
+      h('p',{style:{color:'rgba(255,255,255,.35)',fontSize:16,textAlign:'center'}},
+        props.query?(props.count+' channel'+(props.count!==1?'s':'')+' found'):'Type to search · BACK or 🟩 to close')
+    )
+  );
+}
+
+/* ── Channel edit modal ─────────────────────── */
+function EditModal(props){
+  var ch=props.ch;
+  var nS=useState(ch?ch.name:''),nm=nS[0],setNm=nS[1];
+  var lS=useState(ch?ch.logo||'':''),logo=lS[0],setLogo=lS[1];
+  if(!ch)return null;
+  return h(null,null,
+    h('div',{onClick:props.onCancel,style:{position:'absolute',inset:0,zIndex:75,background:'rgba(0,0,0,.75)',backdropFilter:'blur(10px)'}}),
+    h('div',{className:'slide-up',style:{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',zIndex:76,width:680,background:'#111',borderRadius:24,border:'1px solid rgba(255,255,255,.1)',padding:40,boxShadow:'0 40px 100px rgba(0,0,0,.9)'}},
+      h('h2',{style:{color:'#fff',fontSize:26,fontWeight:800,letterSpacing:'-.03em',marginBottom:28}},'Edit Channel'),
+      h('div',{style:{display:'flex',alignItems:'center',gap:20,marginBottom:32}},
+        h(Logo,{src:logo||ch.logo,name:nm||ch.name,size:72,radius:14}),
+        h('div',null,h('p',{style:{color:'rgba(255,255,255,.5)',fontSize:14}},'Original: '+ch.name),h('p',{style:{color:'rgba(255,255,255,.3)',fontSize:12,marginTop:4}},ch.group))
+      ),
+      h('label',{style:{display:'block',marginBottom:20}},
+        h('span',{style:{color:'rgba(255,255,255,.5)',fontSize:14,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',display:'block',marginBottom:8}},'Channel Name'),
+        h('input',{value:nm,onChange:function(e){setNm(e.target.value);},placeholder:ch.name,style:{width:'100%',background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.15)',borderRadius:12,padding:'14px 18px',fontSize:18}})
+      ),
+      h('label',{style:{display:'block',marginBottom:32}},
+        h('span',{style:{color:'rgba(255,255,255,.5)',fontSize:14,fontWeight:600,letterSpacing:'.06em',textTransform:'uppercase',display:'block',marginBottom:8}},'Logo URL'),
+        h('input',{value:logo,onChange:function(e){setLogo(e.target.value);},placeholder:'https://…/logo.png',style:{width:'100%',background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.15)',borderRadius:12,padding:'14px 18px',fontSize:14}})
+      ),
+      h('div',{style:{display:'flex',gap:14,justifyContent:'flex-end'}},
+        h('button',{onClick:props.onCancel,style:{padding:'14px 32px',borderRadius:12,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',color:'rgba(255,255,255,.6)',fontSize:16,fontWeight:600}},'Cancel'),
+        h('button',{onClick:function(){props.onSave({name:nm||ch.name,logo:logo||ch.logo});},style:{padding:'14px 32px',borderRadius:12,background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.25)',color:'#fff',fontSize:16,fontWeight:700}},'Save')
+      )
+    )
+  );
+}
+
+/* ── Settings panel ─────────────────────────── */
+var BUF_OPTS=['Small (2s)','Medium (5s)','Large (10s)'];
+var QUAL_OPTS=['Auto','1080p','720p','480p'];
+var CACHE_OPTS=['1 hour','6 hours','12 hours','24 hours'];
+var TTL_MAP=[3600000,21600000,43200000,86400000];
+var STABS=['Playback','Display','Playlist','Custom M3U','About'];
+
+function Toggle(props){
+  return h('div',{style:{width:52,height:28,borderRadius:14,position:'relative',background:props.on?'rgba(255,255,255,.82)':'rgba(255,255,255,.1)',transition:'background .2s'}},
+    h('div',{style:{position:'absolute',top:4,width:20,height:20,borderRadius:'50%',left:props.on?28:4,background:props.on?'#000':'rgba(255,255,255,.4)',transition:'left .18s cubic-bezier(.34,1.56,.64,1)'}}));
+}
+
+function SRow(props){
+  var item=props.item,foc=props.foc,onClick=props.onClick,val=props.val;
+  return h('div',{onClick:onClick,style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderRadius:14,marginBottom:6,gap:28,cursor:'pointer',background:foc?'rgba(255,255,255,.09)':'rgba(255,255,255,.025)',border:'1.5px solid '+(foc?'rgba(255,255,255,.3)':'rgba(255,255,255,.04)'),transition:'all .12s'}},
+    h('div',{style:{flex:1,minWidth:0}},
+      h('p',{style:{color:foc?'#fff':'rgba(255,255,255,.82)',fontSize:17,fontWeight:600,marginBottom:4}},item.label),
+      item.desc && h('p',{style:{color:'rgba(255,255,255,.28)',fontSize:13,lineHeight:1.5}},item.desc)
+    ),
+    item.type==='toggle' && h(Toggle,{on:val}),
+    item.type==='cycle' && h('div',{style:{padding:'7px 16px',borderRadius:10,background:foc?'rgba(255,255,255,.14)':'rgba(255,255,255,.06)',border:'1px solid '+(foc?'rgba(255,255,255,.25)':'rgba(255,255,255,.08)')}},
+      h('span',{style:{color:'rgba(255,255,255,.85)',fontSize:14,fontWeight:600}},val)),
+    item.type==='action' && h('div',{style:{padding:'8px 20px',borderRadius:10,background:foc?'rgba(255,255,255,.16)':'rgba(255,255,255,.06)',border:'1px solid '+(foc?'rgba(255,255,255,.3)':'rgba(255,255,255,.1)'),color:foc?'#fff':'rgba(255,255,255,.5)',fontSize:14,fontWeight:600}},item.actionLabel),
+    item.type==='info' && null
+  );
+}
+
+function Settings(props){
+  if(!props.open)return null;
+  var cfg=props.cfg,setCfg=props.setCfg,tab=props.tab,item=props.item,allSrcs=props.allSrcs;
+  var custS=useState(LS.get(CUST_KEY,[])),custs=custS[0],setCusts=custS[1];
+  var newNS=useState(''),newN=newNS[0],setNewN=newNS[1];
+  var newUS=useState(''),newU=newUS[0],setNewU=newUS[1];
+
+  function scfg(k,v){var n=Object.assign({},cfg);n[k]=v;setCfg(n);LS.set(CFG_KEY,n);}
+
+  function addCustom(){
+    if(!newN.trim()||!newU.trim())return;
+    var src={id:'cust_'+Date.now(),label:newN.trim(),desc:'Custom M3U',url:newU.trim(),builtIn:false};
+    var next=custs.concat(src);setCusts(next);LS.set(CUST_KEY,next);setNewN('');setNewU('');
+  }
+  function remCustom(id){
+    var next=custs.filter(function(s){return s.id!==id;});setCusts(next);LS.set(CUST_KEY,next);
+    if(props.activeSrc===id)props.onSrcChange(DEF_SRC);
+  }
+
+  return h(null,null,
+    h('div',{onClick:props.onClose,style:{position:'absolute',inset:0,zIndex:60,background:'rgba(0,0,0,.62)',backdropFilter:'blur(8px)'}}),
+    h('div',{className:'slide-right',style:{position:'absolute',top:0,right:0,bottom:0,zIndex:70,width:700,background:'#0C0C0C',borderLeft:'1px solid rgba(255,255,255,.07)',display:'flex',flexDirection:'column',boxShadow:'-60px 0 120px rgba(0,0,0,.88)'}},
+      /* Header */
+      h('div',{style:{height:76,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 32px',borderBottom:'1px solid rgba(255,255,255,.06)'}},
+        h('span',{style:{color:'#fff',fontWeight:800,fontSize:24,letterSpacing:'-.035em'}},'Settings'),
+        h('kbd',{style:{color:'rgba(255,255,255,.28)',fontSize:12,fontWeight:600,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',borderRadius:7,padding:'4px 12px',fontFamily:'inherit'}},'BACK to close')
+      ),
+      /* Tabs */
+      h('div',{style:{display:'flex',borderBottom:'1px solid rgba(255,255,255,.06)',flexShrink:0}},
+        STABS.map(function(t,i){var act=i===tab;return h('button',{key:t,onClick:function(){props.onTab(i);},style:{flex:1,height:54,border:'none',cursor:'pointer',background:'transparent',fontFamily:'inherit',color:act?'#fff':'rgba(255,255,255,.3)',fontSize:13,fontWeight:act?600:500,borderBottom:'2.5px solid '+(act?'rgba(255,255,255,.8)':'transparent'),transition:'all .15s'}},t);})),
+      /* Body */
+      h('div',{style:{flex:1,overflowY:'auto',padding:'12px 24px 32px'}},
+        /* Playback */
+        tab===0 && [
+          {key:'autoplay',label:'Autoplay on select',desc:'Play when OK pressed',type:'toggle',v:cfg.autoplay!==false},
+          {key:'muteOnStart',label:'Start muted',desc:'Always begin muted',type:'toggle',v:!!cfg.muteOnStart},
+          {key:'bufferSize',label:'Buffer size',desc:'Larger = smoother, slower start',type:'cycle',v:BUF_OPTS[cfg.bufferSize||1]},
+          {key:'quality',label:'Quality',desc:'Preferred stream quality',type:'cycle',v:QUAL_OPTS[cfg.quality||0]}
+        ].map(function(it,i){return h(SRow,{key:it.key,item:it,foc:i===item,val:it.v,onClick:function(){
+          if(it.type==='toggle')scfg(it.key,!cfg[it.key]);
+          if(it.type==='cycle'){if(it.key==='bufferSize')scfg('bufferSize',((cfg.bufferSize||1)+1)%3);else scfg('quality',((cfg.quality||0)+1)%4);}
+        }});
+        }),
+        /* Display */
+        tab===1 && [
+          {key:'aspectRatio',label:'Aspect ratio',desc:'How video fills screen',type:'cycle',v:['Auto','16:9','4:3','Fill'][cfg.aspectRatio||0]},
+          {key:'showBug',label:'Channel badge',desc:'Show channel name while watching',type:'toggle',v:cfg.showBug!==false},
+          {key:'hintBar',label:'Key hints',desc:'Remote shortcut hints',type:'toggle',v:cfg.hintBar!==false}
+        ].map(function(it,i){return h(SRow,{key:it.key,item:it,foc:i===item,val:it.v,onClick:function(){
+          if(it.type==='toggle')scfg(it.key,!cfg[it.key]);
+          if(it.type==='cycle')scfg('aspectRatio',((cfg.aspectRatio||0)+1)%4);
+        }});
+        }),
+        /* Playlist */
+        tab===2 && h(null,null,
+          h('p',{style:{color:'rgba(255,255,255,.28)',fontSize:12,fontWeight:600,letterSpacing:'.08em',textTransform:'uppercase',margin:'8px 4px 10px'}},'Select Playlist Source'),
+          allSrcs.map(function(src,si){
+            var foc=si===item,isAct=src.id===props.activeSrc;
+            return h('div',{key:src.id,onClick:function(){if(!isAct)props.onSrcChange(src.id);},
+              style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderRadius:14,marginBottom:6,cursor:'pointer',background:foc?'rgba(255,255,255,.09)':isAct?'rgba(255,255,255,.04)':'rgba(255,255,255,.025)',border:'1.5px solid '+(foc?'rgba(255,255,255,.3)':isAct?'rgba(255,255,255,.18)':'rgba(255,255,255,.04)')}},
+              h('div',{style:{flex:1,minWidth:0}},
+                h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+                  h('p',{style:{color:foc?'#fff':'rgba(255,255,255,.82)',fontSize:17,fontWeight:600,marginBottom:4}},src.label),
+                  isAct && h('span',{style:{background:'rgba(255,255,255,.12)',color:'rgba(255,255,255,.6)',fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:99,textTransform:'uppercase'}},'Active'),
+                  !src.builtIn && h('span',{style:{background:'rgba(100,200,255,.1)',color:'rgba(100,200,255,.7)',fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:99,textTransform:'uppercase'}},'Custom')
+                ),
+                h('p',{style:{color:'rgba(255,255,255,.28)',fontSize:13}},src.desc)
+              ),
+              h('div',{style:{width:22,height:22,borderRadius:'50%',border:'2px solid rgba(255,255,255,.25)',background:isAct?'rgba(255,255,255,.85)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}},
+                isAct && h('div',{style:{width:8,height:8,borderRadius:'50%',background:'#000'}})
+              )
+            );
+          }),
+          h('div',{style:{height:1,background:'rgba(255,255,255,.06)',margin:'16px 0'}}),
+          h(SRow,{item:{type:'toggle',label:'Cache playlist',desc:'Store locally for faster startup'},foc:allSrcs.length===item,val:cfg.cacheOn!==false,onClick:function(){scfg('cacheOn',!cfg.cacheOn);}}),
+          h(SRow,{item:{type:'cycle',label:'Cache duration',desc:'How long before re-fetching'},foc:allSrcs.length+1===item,val:CACHE_OPTS[cfg.cacheTTL||1],onClick:function(){scfg('cacheTTL',((cfg.cacheTTL||1)+1)%4);}}),
+          h(SRow,{item:{type:'action',label:'Refresh now',desc:'Force re-download playlist',actionLabel:'Refresh'},foc:allSrcs.length+2===item,onClick:function(){props.onRefresh();props.onClose();}})
+        ),
+        /* Custom M3U */
+        tab===3 && h(null,null,
+          h('p',{style:{color:'rgba(255,255,255,.4)',fontSize:14,lineHeight:1.6,margin:'8px 4px 20px'}},'Add your own M3U playlist URL.'),
+          h('label',{style:{display:'block',marginBottom:16}},
+            h('span',{style:{color:'rgba(255,255,255,.5)',fontSize:12,fontWeight:600,textTransform:'uppercase',display:'block',marginBottom:8}},'Playlist Name'),
+            h('input',{value:newN,onChange:function(e){setNewN(e.target.value);},placeholder:'My Playlist',style:{width:'100%',background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.15)',borderRadius:12,padding:'14px 18px',fontSize:16}})
+          ),
+          h('label',{style:{display:'block',marginBottom:20}},
+            h('span',{style:{color:'rgba(255,255,255,.5)',fontSize:12,fontWeight:600,textTransform:'uppercase',display:'block',marginBottom:8}},'M3U URL'),
+            h('input',{value:newU,onChange:function(e){setNewU(e.target.value);},placeholder:'https://example.com/playlist.m3u',style:{width:'100%',background:'rgba(255,255,255,.07)',border:'1.5px solid rgba(255,255,255,.15)',borderRadius:12,padding:'14px 18px',fontSize:14}})
+          ),
+          h('button',{onClick:addCustom,style:{padding:'14px 36px',borderRadius:12,background:'rgba(255,255,255,.14)',border:'1px solid rgba(255,255,255,.25)',color:'#fff',fontSize:16,fontWeight:700,marginBottom:28}},'Add Playlist'),
+          custs.length>0 && h(null,null,
+            h('p',{style:{color:'rgba(255,255,255,.28)',fontSize:12,fontWeight:600,textTransform:'uppercase',margin:'0 4px 10px'}},'Your Custom Playlists'),
+            custs.map(function(src){return h('div',{key:src.id,style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 20px',borderRadius:14,marginBottom:6,background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)'}},
+              h('div',{style:{flex:1,minWidth:0}},
+                h('p',{style:{color:'rgba(255,255,255,.82)',fontSize:16,fontWeight:600}},src.label),
+                h('p',{style:{color:'rgba(255,255,255,.25)',fontSize:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},src.url)
+              ),
+              h('button',{onClick:function(){remCustom(src.id);},style:{marginLeft:16,background:'rgba(255,60,60,.1)',border:'1px solid rgba(255,60,60,.2)',color:'rgba(255,100,100,.8)',borderRadius:8,padding:'7px 14px',fontSize:13,fontWeight:600,flexShrink:0}},'Remove')
+            );})
+          )
+        ),
+        /* About */
+        tab===4 && [
+          {l:'Version',d:'TV+ IPTV v2.0.0 — Enhanced Edition'},
+          {l:'Platform',d:'Samsung Smart TV · Tizen 9 · 1920×1080'},
+          {l:'Controls',d:'← → Browse · ↑ Categories · CH± Prev/Next · 0-9 Direct number · ★ Favorite · Long-press OK to edit'},
+          {l:'Colors',d:'🟥 Overlay  🟩 Search  🟦 Settings  🟡 Refresh'}
+        ].map(function(it,i){return h('div',{key:i,style:{padding:'18px 20px',borderRadius:14,marginBottom:6,background:'rgba(255,255,255,.025)',border:'1px solid rgba(255,255,255,.04)'}},
+          h('p',{style:{color:'rgba(255,255,255,.82)',fontSize:17,fontWeight:600,marginBottom:4}},it.l),
+          h('p',{style:{color:'rgba(255,255,255,.28)',fontSize:13,lineHeight:1.5}},it.d)
+        );})
+      ),
+      /* Footer */
+      h('div',{style:{height:52,flexShrink:0,borderTop:'1px solid rgba(255,255,255,.05)',display:'flex',alignItems:'center',justifyContent:'center',gap:32}},
+        [['←→','Tab'],['↑↓','Move'],['OK','Toggle'],['BACK','Close']].map(function(pair){
+          return h('div',{key:pair[0],style:{display:'flex',alignItems:'center',gap:8}},
+            h('kbd',{style:{color:'rgba(255,255,255,.7)',fontSize:12,fontWeight:700,background:'rgba(255,255,255,.07)',border:'1px solid rgba(255,255,255,.13)',borderRadius:6,padding:'3px 9px',fontFamily:'inherit'}},pair[0]),
+            h('span',{style:{color:'rgba(255,255,255,.22)',fontSize:12}},pair[1])
+          );
+        })
+      )
+    )
+  );
+}
+
+/* ── App shell ──────────────────────────────── */
+function AppShell(props){
+  var scS=useState(1),sc=scS[0],setSc=scS[1];
+  useEffect(function(){
+    function calc(){try{var sw=window.screen&&window.screen.width||window.innerWidth||1920,sh=window.screen&&window.screen.height||window.innerHeight||1080;setSc(Math.min(sw/1920,sh/1080));}catch(e){setSc(1);}}
+    calc();window.addEventListener('resize',calc);return function(){window.removeEventListener('resize',calc);};
+  },[]);
+  return h('div',{style:{width:'100vw',height:'100vh',overflow:'hidden',background:'#000',display:'flex',alignItems:'center',justifyContent:'center'}},
+    h('div',{style:{width:1920,height:1080,position:'relative',overflow:'hidden',background:'#000',transform:'scale('+sc+')',transformOrigin:'center center',flexShrink:0}},props.children));
+}
+
+/* ═══════════════════════════════════════════
+   ROOT APP
+═══════════════════════════════════════════ */
+function App(){
+  /* Overlay visibility */
+  var ovS=useState(true),ov=ovS[0],setOv=ovS[1];
+  var htRef=useRef(null),visRef=useRef(true);
+  function wake(){if(!visRef.current){visRef.current=true;setOv(true);}clearTimeout(htRef.current);htRef.current=setTimeout(function(){if(zRef.current!=='settings'&&zRef.current!=='search'){visRef.current=false;setOv(false);}},HIDE_MS);}
+  useEffect(function(){htRef.current=setTimeout(function(){visRef.current=false;setOv(false);},HIDE_MS);return function(){clearTimeout(htRef.current);};},[]);
+
+  /* Zone / focus */
+  var zS=useState('strip'),zone=zS[0],setZone=zS[1];
+  var chFS=useState(0),chFoc=chFS[0],setChFoc=chFS[1];
+  var ctFS=useState(0),ctFoc=ctFS[0],setCtFoc=ctFS[1];
+  var zRef=useRef('strip'),chRef2=useRef(0),ctRef2=useRef(0);
+  function sz(z){zRef.current=z;setZone(z);}
+  function sCh(v){var n=typeof v==='function'?v(chRef2.current):v;chRef2.current=n;setChFoc(n);}
+  function sCt(v){var n=typeof v==='function'?v(ctRef2.current):v;ctRef2.current=n;setCtFoc(n);}
+
+  /* Settings nav */
+  var stS=useState(0),stTab=stS[0],setStTab=stS[1];
+  var siS=useState(0),stItem=siS[0],setStItem=siS[1];
+  var stTabRef=useRef(0),stItemRef=useRef(0);
+  function sTab(t){stTabRef.current=t;setStTab(t);}
+  function sItem(v){var n=typeof v==='function'?v(stItemRef.current):v;stItemRef.current=n;setStItem(n);}
+
+  /* Volume HUD */
+  var vhS=useState(false),vhVis=vhS[0],setVhVis=vhS[1];
+  var vhTimer=useRef(null);
+  function showVH(){setVhVis(true);clearTimeout(vhTimer.current);vhTimer.current=setTimeout(function(){setVhVis(false);},VOL_MS);}
+  useEffect(function(){return function(){clearTimeout(vhTimer.current);};},[]);
+
+  /* Clock */
+  var clkS=useState(function(){return fmtTime(new Date());}),clk=clkS[0],setClk=clkS[1];
+  useEffect(function(){var id=setInterval(function(){setClk(fmtTime(new Date()));},20000);return function(){clearInterval(id);};},[]);
+
+  /* Digit buffer */
+  var dgS=useState(''),dg=dgS[0],setDg=dgS[1];
+  var dgRef=useRef(''),dgTimer=useRef(null);
+
+  /* Edit modal */
+  var editS=useState(null),editCh=editS[0],setEditCh=editS[1];
+
+  /* Config */
+  var cfgS=useState(function(){return LS.get(CFG_KEY,{bufferSize:1,cacheOn:true,cacheTTL:1,autoplay:true,muteOnStart:false,aspectRatio:0,showBug:true,hintBar:true});}),cfg=cfgS[0],setCfg=cfgS[1];
+
+  /* Active source */
+  var srcS=useState(function(){return LS.get(CFG_KEY,{}).playlistSource||DEF_SRC;}),activeSrc=srcS[0],setActiveSrc=srcS[1];
+  var srcRef=useRef(activeSrc);
+  function changeSrc(id){srcRef.current=id;setActiveSrc(id);var c=Object.assign({},cfg);c.playlistSource=id;setCfg(c);LS.set(CFG_KEY,c);sz('strip');setSelCat('All');sCh(0);}
+
+  /* Favorites */
+  var favS=useState(function(){return LS.get(FAV_KEY,[]);}),favs=favS[0],setFavs=favS[1];
+  function toggleFav(id){setFavs(function(prev){var next=prev.indexOf(id)>=0?prev.filter(function(x){return x!==id;}):[].concat(prev,[id]);LS.set(FAV_KEY,next);return next;});}
+
+  /* Overrides */
+  var ovrS=useState(function(){return LS.get(OVR_KEY,{});}),ovrs=ovrS[0],setOvrs=ovrS[1];
+  function saveOvr(id,data){setOvrs(function(prev){var n=Object.assign({},prev);n[id]=data;LS.set(OVR_KEY,n);return n;});}
+
+  /* Channels */
+  var chsS=useState([]),allChs=chsS[0],setAllChs=chsS[1];
+  var loadS=useState(true),loading=loadS[0],setLoading=loadS[1];
+  var pctS=useState(0),pct=pctS[0],setPct=pctS[1];
+  var statS=useState('Loading…'),stat=statS[0],setStat=statS[1];
+  var errS2=useState(null),err=errS2[0],setErr=errS2[1];
+  var selCatS=useState('All'),selCat=selCatS[0],setSelCat=selCatS[1];
+  var queryS=useState(''),query=queryS[0],setQuery=queryS[1];
+  var curIdxS=useState(-1),curIdx=curIdxS[0],setCurIdx=curIdxS[1];
+
+  /* Computed */
+  var allSrcs=useMemo(function(){return getAllSources();},[activeSrc]);
+
+  var filtChs=useMemo(function(){
+    var base;
+    if(selCat==='⭐ Favorites') base=allChs.filter(function(ch){return favs.indexOf(ch.id)>=0;});
+    else if(selCat==='All') base=allChs;
+    else base=allChs.filter(function(ch){return ch.group===selCat;});
+    if(query){var q=query.toLowerCase();base=base.filter(function(ch){return ch.name&&ch.name.toLowerCase().indexOf(q)>=0;});}
+    return base.map(function(ch){var ov=ovrs[ch.id];if(!ov)return ch;return Object.assign({},ch,{name:ov.name||ch.name,logo:ov.logo||ch.logo});});
+  },[allChs,selCat,query,ovrs,favs]);
+
+  var cats=useMemo(function(){
+    var base=getCategories(allChs);
+    var favChs=allChs.filter(function(ch){return favs.indexOf(ch.id)>=0;});
+    if(favChs.length>0)return [{name:'⭐ Favorites',count:favChs.length,icon:'⭐'}].concat(base);
+    return base;
+  },[allChs,favs]);
+
+  var curCh=useMemo(function(){return curIdx>=0&&curIdx<filtChs.length?filtChs[curIdx]:null;},[filtChs,curIdx]);
+
+  /* Load playlist */
+  var chsRef=useRef([]),catsRef=useRef([]);
+  chsRef.current=filtChs; catsRef.current=cats;
+
+  var loadPl=useCallback(function(force){
+    var src=getSrcById(srcRef.current);
+    setLoading(true);setErr(null);setPct(0);setStat('Checking cache…');
+    var ttlMs=TTL_MAP[cfg.cacheTTL||1]||TTL_MAP[1];
+    idbGet(srcRef.current,function(cached){
+      if(!force&&cfg.cacheOn!==false&&cached&&Array.isArray(cached.chs)&&cached.chs.length>0){
+        var age=Date.now()-(cached.ts||0);
+        if(age<ttlMs){setAllChs(cached.chs);setPct(100);setStat(cached.chs.length+' channels (cached)');setLoading(false);return;}
+      }
+      setStat('Fetching '+src.label+'…');setPct(15);
+      fetchM3U(src.url).then(function(txt){
+        if(!txt){setErr('Could not load "'+src.label+'". Check connection.');setLoading(false);return;}
+        setPct(65);setStat('Parsing…');
+        var chs=parseM3U(txt);
+        if(!chs.length){setErr('No channels in "'+src.label+'".');setLoading(false);return;}
+        if(cfg.cacheOn!==false)idbPut({id:srcRef.current,chs:chs,ts:Date.now(),ttl:ttlMs},null);
+        setAllChs(chs);setPct(100);setStat(chs.length+' channels ready');setLoading(false);
+      }).catch(function(e){setErr('Error: '+e.message);setLoading(false);});
+    });
+  },[cfg]);
+
+  useEffect(function(){loadPl(false);},[activeSrc]);
+
+  /* Restore last channel */
+  useEffect(function(){
+    if(loading)return;
+    var last=LS.get(LAST_KEY,null);
+    if(!last||last.src!==srcRef.current)return;
+    var idx=filtChs.findIndex(function(ch){return ch.id===last.id;});
+    if(idx>=0){setCurIdx(idx);sCh(idx);if(filtChs[idx].url){av.play(filtChs[idx].url,filtChs[idx].name);}}
   },[loading]);
 
-  /* ── Service Worker registration ── */
-  useEffect(()=>{
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js', {scope:'./'})
-        .then(reg=>{ console.log('[SW] Registered', reg.scope); })
-        .catch(err=>{ console.warn('[SW] Registration failed:', err); });
-    }
-  },[]);
+  /* AVPlay & volume */
+  var av=useAVPlay();
+  var vol=useVolume();
 
-  /* ── Handlers ── */
-  const handleSelectChannel = useCallback((index)=>{
-    const ch=chRef.current[index];
-    if (!ch) return;
-    selectRef.current(index);
-    chIdxRef.current=index;
-    setFocusedChIdx(index);
-    if (ch.url) playRef.current(ch.url, ch.name);
-    // Save last channel
-    const cfg=storage.get(CFG_KEY,{});
-    storage.set(LAST_CH_KEY,{sourceId:cfg.playlistSource??DEFAULT_SOURCE_ID,channelId:ch.id,index});
-    wakeOverlay();
-  },[wakeOverlay]);
+  /* Refs for handlers */
+  var avRef3=useRef(av);avRef3.current=av;
+  var volRef=useRef(vol);volRef.current=vol;
 
-  const handleSelectCategory = useCallback((cat)=>{
-    setSelectedCategory(cat);
-    const idx=catsRef.current.findIndex(c=>c.name===cat);
-    if (idx>=0){ catIdxRef.current=idx; setFocusedCatIdx(idx); }
-    chIdxRef.current=0; setFocusedChIdx(0); selectRef.current(-1);
-  },[setSelectedCategory]);
-
-  const openSettings = useCallback(()=>{ wakeOverlay(); setZoneSync('settings'); setTabSync(0); setItemSync(0); },[wakeOverlay]);
-  const openSearch   = useCallback(()=>{ wakeOverlay(); setZoneSync('search'); },[wakeOverlay]);
-
-  /* ── Digit channel jump ── */
-  const handleDigit = useCallback((d)=>{
-    wakeOverlay();
-    clearTimeout(digitTimer.current);
-    const next = digitBufRef.current + String(d);
-    digitBufRef.current = next;
-    setDigitBuffer(next);
-
-    digitTimer.current = setTimeout(()=>{
-      const target = parseInt(digitBufRef.current, 10) - 1; // 1-based → 0-based
-      digitBufRef.current = '';
-      setDigitBuffer('');
-      const chs = chRef.current;
-      if (target>=0 && target<chs.length) {
-        handleSelectChannel(target);
-      }
-    }, DIGIT_TIMEOUT);
-  },[wakeOverlay, handleSelectChannel]);
-
-  /* ── Remote control ── */
-  useRemoteControl({
-    onAnyKey: ()=>wakeOverlay(),
-    onUp: ()=>{
-      const z=zoneRef.current;
-      if (z==='settings'){ setItemSync(i=>Math.max(0,i-1)); return; }
-      if (z==='strip')   { setZoneSync('cats'); return; }
-    },
-    onDown: ()=>{
-      const z=zoneRef.current;
-      if (z==='settings'){ setItemSync(i=>Math.min(SETTINGS_ITEM_COUNT(tabRef.current)-1,i+1)); return; }
-      if (z==='cats')    { setZoneSync('strip'); return; }
-    },
-    onLeft: ()=>{
-      const z=zoneRef.current;
-      if (z==='strip')   { setChSync(i=>Math.max(0,i-1)); return; }
-      if (z==='cats')    { setCatSync(i=>{ const n=Math.max(0,i-1); const c=catsRef.current[n]; if(c)handleSelectCategory(c.name); return n; }); return; }
-      if (z==='settings'){ const t=Math.max(0,tabRef.current-1); setTabSync(t); setItemSync(0); return; }
-    },
-    onRight: ()=>{
-      const z=zoneRef.current;
-      if (z==='strip')   { setChSync(i=>Math.min(chRef.current.length-1,i+1)); return; }
-      if (z==='cats')    { setCatSync(i=>{ const n=Math.min(catsRef.current.length-1,i+1); const c=catsRef.current[n]; if(c)handleSelectCategory(c.name); return n; }); return; }
-      if (z==='settings'){ const t=Math.min(SETTINGS_TAB_COUNT-1,tabRef.current+1); setTabSync(t); setItemSync(0); return; }
-    },
-    onEnter: ()=>{
-      const z=zoneRef.current;
-      if (z==='strip')   { handleSelectChannel(chIdxRef.current); return; }
-      if (z==='cats')    { setZoneSync('strip'); return; }
-      if (z==='settings'){ itemActionRef.current?.(tabRef.current,itemRef.current); return; }
-    },
-    onBack: ()=>{
-      const z=zoneRef.current;
-      if (z==='settings')   { setZoneSync('strip'); return; }
-      if (z==='cats')       { setZoneSync('strip'); return; }
-      if (z==='search')     { setSearchQuery(''); setZoneSync('strip'); return; }
-      if (editingChannel)   { setEditingChannel(null); return; }
-    },
-    onSettings:  ()=>{ const z=zoneRef.current; z==='settings'?setZoneSync('strip'):openSettings(); },
-    onPlayPause: ()=>togglePause(),
-    onStop:      ()=>stop(),
-    onChannelUp: ()=>{
-      setChSync(i=>{ const n=Math.min(chRef.current.length-1,i+1); const ch=chRef.current[n]; if(ch){selectRef.current(n);playRef.current(ch.url,ch.name);storage.set(LAST_CH_KEY,{sourceId:storage.get(CFG_KEY,{}).playlistSource??DEFAULT_SOURCE_ID,channelId:ch.id,index:n});} return n; });
-    },
-    onChannelDown: ()=>{
-      setChSync(i=>{ const n=Math.max(0,i-1); const ch=chRef.current[n]; if(ch){selectRef.current(n);playRef.current(ch.url,ch.name);storage.set(LAST_CH_KEY,{sourceId:storage.get(CFG_KEY,{}).playlistSource??DEFAULT_SOURCE_ID,channelId:ch.id,index:n});} return n; });
-    },
-    onVolumeUp:   ()=>{ volumeUp();   showVolHUD(); },
-    onVolumeDown: ()=>{ volumeDown(); showVolHUD(); },
-    onMute:       ()=>{ toggleMute(); showVolHUD(); },
-    onYellow:     ()=>refreshPlaylist(),
-    onRed: ()=>{
-      if (visibleRef.current){clearTimeout(hideTimer.current);visibleRef.current=false;setOverlayVisible(false);}
-      else wakeOverlay();
-    },
-    onGreen: ()=>{ const z=zoneRef.current; if(z==='search'){setSearchQuery('');setZoneSync('strip');}else openSearch(); },
-    onBlue:  ()=>{ const z=zoneRef.current; z==='settings'?setZoneSync('strip'):openSettings(); },
-    onDigit: (d)=>handleDigit(d),
-    onInfo:    ()=>{},
-    onForward: ()=>{},
-    onRewind:  ()=>{},
-    onExit:    ()=>{},
-  }, !loading);
-
-  const handleEditRequest = useCallback((idx)=>{
-    const ch = chRef.current[idx];
-    if (ch) setEditingChannel(ch);
-  },[]);
-
-  const handleSaveEdit = useCallback((chId, data)=>{
-    saveOverride(chId, data);
-    setEditingChannel(null);
-  },[saveOverride]);
-
-  /* ── Loading screen ── */
-  if (loading) {
-    return (<AppShell><LoadingScreen progress={loadProgress} status={loadStatus} error={error} onRetry={refreshPlaylist}/></AppShell>);
+  /* Select channel */
+  function selCh(idx){
+    var ch=chsRef.current[idx];if(!ch)return;
+    setCurIdx(idx);sCh(idx);
+    if(ch.url)avRef3.current.play(ch.url,ch.name);
+    LS.set(LAST_KEY,{src:srcRef.current,id:ch.id,idx:idx});
+    wake();
   }
 
-  const settingsOpen = zone==='settings';
-  const searchOpen   = zone==='search';
+  /* Category select */
+  function selCat2(name){
+    setSelCat(name);
+    var idx=catsRef.current.findIndex(function(c){return c.name===name;});
+    if(idx>=0)sCt(idx);
+    sCh(0);setCurIdx(-1);
+  }
 
-  return (
-    <AppShell>
-      {/* ① Video */}
-      <VideoPlayer playerState={playerState} isBuffering={isBuffering} isMuted={isMuted} currentChannel={currentChannel} isTizen={isTizen}/>
+  /* Open settings / search */
+  function openSettings(){wake();sz('settings');sTab(0);sItem(0);}
+  function openSearch(){wake();sz('search');}
 
-      {/* ② Overlay */}
-      <Overlay
-        visible={overlayVisible||settingsOpen||searchOpen}
-        playerState={playerState} isMuted={isMuted} currentChannel={currentChannel}
-        onTogglePause={togglePause} onToggleMute={()=>{toggleMute();showVolHUD();}}
-        channels={filteredChannels} currentChannelIndex={currentChannelIndex}
-        focusedChannelIdx={focusedChIdx} onSelectChannel={handleSelectChannel}
-        categories={categories} selectedCategory={selectedCategory}
-        onSelectCategory={handleSelectCategory} focusedCatIdx={focusedCatIdx}
-        zone={settingsOpen||searchOpen?'strip':zone}
-        onSettings={openSettings} onSearch={openSearch} clock={clock}
-        favorites={favorites} onToggleFav={toggleFavorite}
-        onEditRequest={handleEditRequest}
-      />
+  /* Digit handler */
+  function onDigit(d){
+    wake();
+    clearTimeout(dgTimer.current);
+    var next=dgRef.current+String(d);dgRef.current=next;setDg(next);
+    dgTimer.current=setTimeout(function(){
+      var target=parseInt(dgRef.current,10)-1;
+      dgRef.current='';setDg('');
+      var chs=chsRef.current;
+      if(target>=0&&target<chs.length)selCh(target);
+    },DIGIT_MS);
+  }
 
-      {/* ③ Volume HUD */}
-      <VolumeHUD volume={volume} isMuted={isMuted} visible={volHUDVisible}/>
+  /* Settings item count per tab */
+  function itemCount(t){
+    if(t===0)return 4;
+    if(t===1)return 3;
+    if(t===2)return allSrcs.length+3;
+    if(t===3)return 3;
+    if(t===4)return 4;
+    return 0;
+  }
 
-      {/* ④ Channel number OSD */}
-      {digitBuffer&&<ChannelNumberOSD digits={digitBuffer} total={filteredChannels.length}/>}
+  /* Remote */
+  useRemote({
+    onAny:function(){wake();},
+    onUp:function(){
+      var z=zRef.current;
+      if(z==='settings'){sItem(function(i){return Math.max(0,i-1);});return;}
+      if(z==='strip'){sz('cats');return;}
+    },
+    onDown:function(){
+      var z=zRef.current;
+      if(z==='settings'){sItem(function(i){return Math.min(itemCount(stTabRef.current)-1,i+1);});return;}
+      if(z==='cats'){sz('strip');return;}
+    },
+    onLeft:function(){
+      var z=zRef.current;
+      if(z==='strip'){sCh(function(i){return Math.max(0,i-1);});return;}
+      if(z==='cats'){sCt(function(i){var n=Math.max(0,i-1);var c=catsRef.current[n];if(c)selCat2(c.name);return n;});return;}
+      if(z==='settings'){var t=Math.max(0,stTabRef.current-1);sTab(t);sItem(0);return;}
+    },
+    onRight:function(){
+      var z=zRef.current;
+      if(z==='strip'){sCh(function(i){return Math.min(chsRef.current.length-1,i+1);});return;}
+      if(z==='cats'){sCt(function(i){var n=Math.min(catsRef.current.length-1,i+1);var c=catsRef.current[n];if(c)selCat2(c.name);return n;});return;}
+      if(z==='settings'){var t2=Math.min(STABS.length-1,stTabRef.current+1);sTab(t2);sItem(0);return;}
+    },
+    onOK:function(){
+      var z=zRef.current;
+      if(z==='strip'){selCh(chRef2.current);return;}
+      if(z==='cats'){sz('strip');return;}
+      if(z==='settings'){
+        /* handled inside Settings component via direct cfg mutation */
+        return;
+      }
+    },
+    onBack:function(){
+      var z=zRef.current;
+      if(z==='settings'){sz('strip');return;}
+      if(z==='cats'){sz('strip');return;}
+      if(z==='search'){setQuery('');sz('strip');return;}
+      if(editCh){setEditCh(null);return;}
+    },
+    onSettings:function(){zRef.current==='settings'?sz('strip'):openSettings();},
+    onPP:function(){avRef3.current.togglePause();},
+    onStop:function(){avRef3.current.stop();},
+    onCHU:function(){sCh(function(i){var n=Math.min(chsRef.current.length-1,i+1);var ch=chsRef.current[n];if(ch){setCurIdx(n);avRef3.current.play(ch.url,ch.name);LS.set(LAST_KEY,{src:srcRef.current,id:ch.id,idx:n});}return n;});},
+    onCHD:function(){sCh(function(i){var n=Math.max(0,i-1);var ch=chsRef.current[n];if(ch){setCurIdx(n);avRef3.current.play(ch.url,ch.name);LS.set(LAST_KEY,{src:srcRef.current,id:ch.id,idx:n});}return n;});},
+    onVU:function(){volRef.current.volUp();showVH();},
+    onVD:function(){volRef.current.volDown();showVH();},
+    onMute:function(){volRef.current.toggleMute();showVH();},
+    onYellow:function(){loadPl(true);},
+    onRed:function(){if(visRef.current){clearTimeout(htRef.current);visRef.current=false;setOv(false);}else wake();},
+    onGreen:function(){zRef.current==='search'?(setQuery(''),sz('strip')):openSearch();},
+    onBlue:function(){zRef.current==='settings'?sz('strip'):openSettings();},
+    onDigit:onDigit
+  });
 
-      {/* ⑤ Search */}
-      <SearchOverlay isOpen={searchOpen} query={searchQuery} onQueryChange={setSearchQuery}
-        onClose={()=>{ setSearchQuery(''); setZoneSync('strip'); }} resultCount={filteredChannels.length}/>
+  if(loading){
+    return h(AppShell,null,h(LoadingScreen,{pct:pct,status:stat,error:err,onRetry:function(){loadPl(true);}}));
+  }
 
-      {/* ⑥ Settings */}
-      <SettingsPanel isOpen={settingsOpen} onClose={()=>setZoneSync('strip')}
-        onRefreshPlaylist={()=>{ setZoneSync('strip'); refreshPlaylist(); }}
-        focusedTab={settingsTab} focusedItem={settingsItem}
-        onTabChange={t=>{ setTabSync(t); setItemSync(0); }}
-        onItemAction={itemActionRef}
-        activeSourceId={activeSourceId}
-        onSourceChange={(id)=>{ setActiveSourceId(id); setZoneSync('strip'); }}
-      />
+  var isSettings=zone==='settings',isSearch=zone==='search';
+  var ovVis=ov||isSettings||isSearch;
 
-      {/* ⑦ Channel edit modal */}
-      {editingChannel&&(
-        <ChannelEditModal
-          channel={editingChannel}
-          onSave={(data)=>handleSaveEdit(editingChannel.id, data)}
-          onCancel={()=>setEditingChannel(null)}
-        />
-      )}
-    </AppShell>
+  return h(AppShell,null,
+    /* Video */
+    h(VideoPlayer,{ps:av.ps,buf:av.buf,muted:av.muted,ch:curCh,isTizen:av.isTizen}),
+    /* Overlay */
+    h(Overlay,{visible:ovVis,ps:av.ps,muted:av.muted,ch:curCh,clock:clk,
+      onSearch:openSearch,onMute:function(){av.toggleMute();showVH();},onPP:av.togglePause,onSettings:openSettings,
+      chs:filtChs,curIdx:curIdx,chFocIdx:chFoc,onSelCh:selCh,
+      cats:cats,selCat:selCat,onSelCat:selCat2,catFocIdx:ctFoc,
+      zone:isSettings||isSearch?'strip':zone,
+      favs:favs,onFav:toggleFav,
+      onEdit:function(idx){var ch=chsRef.current[idx];if(ch)setEditCh(ch);}
+    }),
+    /* Volume HUD */
+    h(VolHUD,{vol:vol.vol,mut:vol.mut,visible:vhVis}),
+    /* Channel number OSD */
+    dg && h(NumOSD,{digits:dg,total:filtChs.length}),
+    /* Search */
+    h(SearchOvr,{open:isSearch,query:query,onQ:setQuery,onClose:function(){setQuery('');sz('strip');},count:filtChs.length}),
+    /* Settings */
+    h(Settings,{open:isSettings,onClose:function(){sz('strip');},onRefresh:function(){sz('strip');loadPl(true);},
+      tab:stTab,item:stItem,onTab:function(t){sTab(t);sItem(0);},
+      cfg:cfg,setCfg:function(c){setCfg(c);LS.set(CFG_KEY,c);},
+      allSrcs:allSrcs,activeSrc:activeSrc,onSrcChange:changeSrc
+    }),
+    /* Edit modal */
+    editCh && h(EditModal,{ch:editCh,onCancel:function(){setEditCh(null);},onSave:function(data){saveOvr(editCh.id,data);setEditCh(null);}})
   );
 }
 
-/* ═══════════════════════════════════════════════════════════
-   MOUNT
-═══════════════════════════════════════════════════════════ */
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App/>);
+/* Mount */
+RD.createRoot(document.getElementById('root')).render(h(App,null));
+})();
 </script>
 </body>
 </html>
