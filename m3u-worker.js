@@ -1,38 +1,42 @@
 /**
  * m3u-worker.js — Web Worker for M3U parsing
- * Runs off the main thread so large playlists (800+ channels)
- * don't freeze the UI during parsing.
  *
- * Protocol:
- *   Main → Worker:  { type: 'PARSE', content: string, sourceId: string }
- *   Worker → Main:  { type: 'RESULT', channels: [], sourceId: string }
- *                   { type: 'ERROR',  message: string, sourceId: string }
+ * Updated protocol uses reqId (not sourceId) to prevent key collision
+ * when the same source is parsed twice in rapid succession.
+ *
+ * Main → Worker:  { type:'PARSE', content, sourceId, reqId }
+ * Worker → Main:  { type:'RESULT', channels, sourceId, reqId }
+ *                 { type:'ERROR',  message, sourceId, reqId }
  */
 
 self.onmessage = function(e) {
-  const { type, content, sourceId } = e.data || {};
-
-  if (type === 'PARSE') {
-    try {
-      const channels = parseM3U(content);
-      self.postMessage({ type: 'RESULT', channels, sourceId });
-    } catch (err) {
-      self.postMessage({ type: 'ERROR', message: String(err.message || err), sourceId });
-    }
-    return;
-  }
+  const { type, content, sourceId, reqId } = e.data || {};
 
   if (type === 'PING') {
     self.postMessage({ type: 'PONG' });
     return;
+  }
+
+  if (type === 'PARSE') {
+    try {
+      const channels = parseM3U(content);
+      self.postMessage({ type: 'RESULT', channels, sourceId, reqId });
+    } catch (err) {
+      self.postMessage({
+        type: 'ERROR',
+        message: String(err && err.message ? err.message : err),
+        sourceId,
+        reqId,
+      });
+    }
   }
 };
 
 function parseM3U(content) {
   if (!content || typeof content !== 'string') return [];
   const channels = [];
-  let current = null;
-  const lines = content.split('\n');
+  let current    = null;
+  const lines    = content.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -41,7 +45,8 @@ function parseM3U(content) {
       current = parseExtInf(line);
     } else if (line.startsWith('#')) {
       continue;
-    } else if (current && (line.startsWith('http') || line.startsWith('rtmp') || line.startsWith('rtp'))) {
+    } else if (current &&
+      (line.startsWith('http') || line.startsWith('rtmp') || line.startsWith('rtp'))) {
       current.url = line;
       current.id  = 'ch_' + channels.length;
       channels.push(current);
@@ -55,15 +60,15 @@ function parseExtInf(line) {
   function safe(re) {
     try { return (line.match(re) || [])[1] || ''; } catch { return ''; }
   }
-  const lastComma = line.lastIndexOf(',');
-  const displayName = lastComma >= 0 ? line.slice(lastComma + 1).trim() : '';
+  const lc          = line.lastIndexOf(',');
+  const displayName = lc >= 0 ? line.slice(lc + 1).trim() : '';
   return {
-    id: '',
-    name: (safe(/tvg-name="([^"]*)"/) || displayName || 'Unknown').trim(),
-    logo: safe(/tvg-logo="([^"]*)"/),
-    group: (safe(/group-title="([^"]*)"/) || 'General').trim(),
-    language: safe(/tvg-language="([^"]*)"/),
-    country: safe(/tvg-country="([^"]*)"/),
-    url: '',
+    id:       '',
+    url:      '',
+    name:     (safe(/tvg-name="([^"]*)"/)     || displayName || 'Unknown').trim(),
+    logo:      safe(/tvg-logo="([^"]*)"/),
+    group:    (safe(/group-title="([^"]*)"/)  || 'General').trim(),
+    language:  safe(/tvg-language="([^"]*)"/),
+    country:   safe(/tvg-country="([^"]*)"/),
   };
 }
