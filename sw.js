@@ -1,55 +1,60 @@
 /**
  * sw.js — Service Worker for TV+ IPTV
  *
- * P0-3 fix: M3U playlist responses are NEVER cached.
- *
- * Root cause of original bug:
- *   The M3U exclusion only checked `url.pathname.endsWith('.m3u')` and
- *   `url.hostname.includes('iptv-org')`. But playlist requests to:
- *     - corsproxy.io  (CORS proxy)
- *     - allorigins.win (CORS proxy)
- *     - workers.dev   (JIO, YuppTV custom endpoints)
- *   fell through to networkFirst(), which CACHES the response.
- *   On next app start the SW returned stale M3U from cache.
- *
- * Fix: explicit passthrough for ALL known playlist-delivery hostnames,
- *   plus any URL whose response content-type is m3u/mpegurl, plus
- *   any URL whose query string contains a playlist URL (proxy pattern).
- *
  * Caching strategies:
- *   App shell (/, index.html, workers) → Cache First
- *   Logo images (.png/.jpg etc.)       → Stale-While-Revalidate
- *   Playlist / M3U sources             → Network Only (never cache)
- *   Everything else                    → Network First (no cache fallback for unknown)
+ *   App shell (/, workers)          → Cache First (immutable)
+ *   Logo images (.png/.jpg etc.)    → Stale-While-Revalidate
+ *   Playlists (iptv-org)            → Stale-While-Revalidate (pre-cached on install)
+ *   Playlists (workers.dev)         → Network Only (ephemeral endpoints)
+ *   Everything else                 → Network Only (safe default)
+ *
+ * Pre-caching: iptv-org playlist URLs are fetched during SW install
+ * so the very first app load reads from cache instead of the network.
+ * The app's IndexedDB cache still manages its own TTL independently.
  */
 
-const SHELL_CACHE = 'tvplus-shell-v2';  // bumped version to clear old caches
-const LOGO_CACHE  = 'tvplus-logos-v1';
+const SHELL_CACHE    = 'tvplus-shell-v2';
+const LOGO_CACHE     = 'tvplus-logos-v1';
+const PLAYLIST_CACHE = 'tvplus-playlists-v1';   // pre-cached on install
 
 const SHELL_FILES = ['/', '/index.html', '/m3u-worker.js'];
 
-// ── Hostnames that deliver M3U playlist content ─────────────────
-// P0-3: all known proxy / playlist CDN hostnames
-const PLAYLIST_HOSTS = new Set([
+// ── Pre-cached playlist URLs (stable iptv-org sources only) ────
+// These are fetched during SW install so the first app load is instant.
+// workers.dev URLs are NOT pre-cached (they change frequently).
+const PRECACHED_PLAYLISTS = [
+  'https://iptv-org.github.io/iptv/languages/tel.m3u',
+  'https://iptv-org.github.io/iptv/countries/in.m3u',
+];
+
+// ── Hostnames that deliver M3U content ─────────────────────────
+const WORKERS_DEV_HOSTS = new Set([
+  'workers.dev',
+  'joinus-apiworker.workers.dev',
+  'ironmancreation.workers.dev',
+  'yecic62314.workers.dev',
+]);
+const IPTV_ORG_HOSTS = new Set([
   'iptv-org.github.io',
   'raw.githubusercontent.com',
+]);
+const CORS_PROXY_HOSTS = new Set([
   'corsproxy.io',
   'api.allorigins.win',
-  'workers.dev',
-  'joinus-apiworker.workers.dev',   // JIO (old fallback)
-  'ironmancreation.workers.dev',    // JIO (new primary)
-  'yecic62314.workers.dev',         // YuppTV
 ]);
 
 function isPlaylistRequest(url) {
-  // Exact hostname match or suffix match for workers.dev subdomains
-  if (PLAYLIST_HOSTS.has(url.hostname)) return true;
+  if (IPTV_ORG_HOSTS.has(url.hostname)) return true;
+  if (CORS_PROXY_HOSTS.has(url.hostname)) return true;
+  if (WORKERS_DEV_HOSTS.has(url.hostname)) return true;
   if (url.hostname.endsWith('.workers.dev')) return true;
-  // Path ends with .m3u or .m3u8
   if (/\.m3u8?$/i.test(url.pathname)) return true;
-  // Proxy pattern: URL contains encoded playlist URL in query
   if (url.search.includes('iptv-org') || url.search.includes('.m3u')) return true;
   return false;
+}
+
+function isIptvOrgRequest(url) {
+  return IPTV_ORG_HOSTS.has(url.hostname);
 }
 
 function isLogoRequest(url) {
@@ -60,19 +65,25 @@ function isShellRequest(url) {
   return SHELL_FILES.includes(url.pathname) || url.pathname === '';
 }
 
-// ── Install ─────────────────────────────────────────────────────
+// ── Install: cache shell + pre-cache iptv-org playlists ────────
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(SHELL_CACHE)
       .then(cache => cache.addAll(SHELL_FILES))
+      .then(() => caches.open(PLAYLIST_CACHE))
+      .then(cache => Promise.allSettled(
+        PRECACHED_PLAYLISTS.map(url =>
+          cache.add(url).catch(() => {/* swallow — non-critical */})
+        )
+      ))
       .then(() => self.skipWaiting())
       .catch(() => self.skipWaiting())
   );
 });
 
-// ── Activate: delete ALL old caches ─────────────────────────────
+// ── Activate: clean old caches ─────────────────────────────────
 self.addEventListener('activate', (event) => {
-  const KEEP = [SHELL_CACHE, LOGO_CACHE];
+  const KEEP = [SHELL_CACHE, LOGO_CACHE, PLAYLIST_CACHE];
   event.waitUntil(
     caches.keys()
       .then(keys => Promise.all(
@@ -85,61 +96,60 @@ self.addEventListener('activate', (event) => {
 // ── Fetch ────────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-
-  // Only intercept GET
   if (request.method !== 'GET') return;
 
   let url;
   try { url = new URL(request.url); } catch { return; }
-
-  // Skip non-http(s) (e.g. Tizen $WEBAPIS scheme)
   if (!url.protocol.startsWith('http')) return;
 
-  // P0-3: Playlist/M3U — always network only, never cache
+  // ── Playlist requests ────────────────────────────────────────
   if (isPlaylistRequest(url)) {
-    // Explicitly fetch from network, don't even check cache
+    // iptv-org: stale-while-revalidate (pre-cached on install)
+    if (isIptvOrgRequest(url)) {
+      event.respondWith(staleWhileRevalidate(request, PLAYLIST_CACHE));
+      return;
+    }
+    // workers.dev / CORS proxies: network only (never cache)
     event.respondWith(
       fetch(request).catch(() => new Response('', { status: 503 }))
     );
     return;
   }
 
-  // Logo images — stale-while-revalidate
+  // ── Logo images ───────────────────────────────────────────────
   if (isLogoRequest(url)) {
-    event.respondWith(staleWhileRevalidate(request));
+    event.respondWith(staleWhileRevalidate(request, LOGO_CACHE));
     return;
   }
 
-  // App shell — cache first
+  // ── App shell ─────────────────────────────────────────────────
   if (isShellRequest(url)) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(cacheFirst(request, SHELL_CACHE));
     return;
   }
 
-  // Everything else — network only (safe default: no unknown caching)
+  // ── Everything else: network only ─────────────────────────────
   event.respondWith(
     fetch(request).catch(() => new Response('', { status: 503 }))
   );
 });
 
 // ── Strategies ───────────────────────────────────────────────────
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
+async function cacheFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
   if (cached) return cached;
   try {
     const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(SHELL_CACHE);
-      cache.put(request, response.clone());
-    }
+    if (response.ok) cache.put(request, response.clone());
     return response;
   } catch {
-    return new Response('Offline', { status: 503 });
+    return new Response('', { status: 503 });
   }
 }
 
-async function staleWhileRevalidate(request) {
-  const cache  = await caches.open(LOGO_CACHE);
+async function staleWhileRevalidate(request, cacheName) {
+  const cache  = await caches.open(cacheName);
   const cached = await cache.match(request);
   const fetchPromise = fetch(request)
     .then(response => {
@@ -147,14 +157,27 @@ async function staleWhileRevalidate(request) {
       return response;
     })
     .catch(() => null);
-  return cached || (await fetchPromise) || new Response('', { status: 404 });
+  return cached || (await fetchPromise) || new Response('', { status: 503 });
 }
 
-// Message handler
+// ── Message handler ─────────────────────────────────────────────
 self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
   if (event.data === 'CLEAR_CACHE') {
-    // Allow main thread to purge all caches (e.g. on force refresh)
     caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+  }
+  if (event.data === 'REFRESH_PLAYLISTS') {
+    // Clear playlist cache so next fetch goes to network
+    caches.open(PLAYLIST_CACHE).then(cache => {
+      cache.keys().then(keys => Promise.all(keys.map(k => cache.delete(k))));
+    });
+    // Re-fetch and cache
+    caches.open(PLAYLIST_CACHE).then(cache =>
+      Promise.allSettled(
+        PRECACHED_PLAYLISTS.map(url =>
+          fetch(url).then(r => { if (r.ok) cache.put(url, r); }).catch(() => {})
+        )
+      )
+    );
   }
 });
