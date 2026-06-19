@@ -35,9 +35,10 @@ const PLAYLIST_HOSTS = new Set([
   'raw.githubusercontent.com',
   'corsproxy.io',
   'api.allorigins.win',
-  'workers.dev',           // JIO, YuppTV, and any custom Cloudflare worker
-  'joinus-apiworker.workers.dev',
-  'yecic62314.workers.dev',
+  'workers.dev',
+  'joinus-apiworker.workers.dev',   // JIO (old fallback)
+  'ironmancreation.workers.dev',    // JIO (new primary)
+  'yecic62314.workers.dev',         // YuppTV
 ]);
 
 function isPlaylistRequest(url) {
